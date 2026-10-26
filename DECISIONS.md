@@ -310,3 +310,22 @@ wenn sie freiliegen) wird im Core vorbereitet und in #26 genutzt.
   und Nachbar-Chunks müssen gemeinsame Samples bitgleich berechnen. Folge: leichte Richtungs-
   abhängigkeit, ab welcher Neigung der Boden fehlt.
 - Werkzeug `geodump` (Viewer): Querschnitte und Oberflächenmaterial-Karte zum Prüfen.
+
+**Umsetzung Erze (#45, 2026-10-26):**
+- Provinzen: Voronoi mit ≈ 900 m Abstand, Mittelpunkte um 0,25-0,75 der Zelle versetzt (damit die
+  3×3-Suche garantiert den nächsten findet). 1-5 Erzarten, immer ein Grundmetall; Spezialmaterialien
+  nach Umgebung am Mittelpunkt. Quarz zusätzlich als Adern in Bergprovinzen, weil Kristall-Biome
+  praktisch nie vorkommen (#49).
+- Regeln als typisierte Tabelle (`ore_rules.rs`); Formen: Nester (3D-Noise über Schwelle),
+  Adern (dünne Platten entlang einer Noise-Nullfläche, begrenzt durch zweite Noise), Seifen
+  (vergrabene Goldsand-Linsen 4,5-8,5 m unter Flussbetten, weil die Flussboden-Schicht dünner
+  als die Schutz-Schale ist). Noise auf dem gemeinsamen 4-m-Gitter (`grid.rs`).
+- Abgestimmte Anteile am geeigneten Gestein (Seed 42): Eisen ≈ 3,8 %, Kohle ≈ 3,6 %,
+  Kupfer ≈ 3,3 %, Zinn ≈ 1,8 %, Magnetit ≈ 1,5 %, Quarz ≈ 1,2 %, Silber ≈ 0,5 %, Gold ≈ 0,23 %.
+  Erste Fassung hatte Gold/Silber als häufigste Erze (Adern zu dicht); per Messwerkzeug korrigiert.
+- Erze nur ≥ `SURFACE_SHELL` unter der niedrigsten Oberfläche der 3×3-Nachbarschaft, ohne
+  Ausnahme an Eingängen; getestet als Eigenschaft ("Material jeder Zelle an öffentlicher Luft
+  bleibt"), auch an Eingängen. Erze enden bei y = -158, über `CAVE_MIN_Y`, weil Chunks darunter
+  ohne Untergrund erzeugt werden (Review-Fund: Naht bei y = -160).
+- `Underground::materials_chunk` liefert vollständiges Material auch für massiven Fels (für #6);
+  `density_chunk` bleibt "braucht ein Mesh?". Akzentfarben in `materials.ron` für Erze.

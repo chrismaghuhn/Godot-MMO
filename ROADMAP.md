@@ -44,7 +44,7 @@ Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-V
 - [ ] Gestein und Erze (D-013): #5
   - [x] Material-Kanal pro Voxel + materials.ron: #43
   - [x] Gesteinsschichten und Oberflächenmaterial (öffentlich): #44
-  - [ ] Provinzen, Erz-Vorkommen, Reinheit (geheim): #45
+  - [x] Provinzen, Erz-Vorkommen, Reinheit (geheim): #45
   - [ ] Sichtbarkeits-Filter (Erze erst zeigen, wenn sie freiliegen): #46
   - [ ] Viewer: Materialfarben, Röntgenmodus, Statistik: #47
 - [ ] Graben/Bauen: Änderungen pro Chunk speichern, Chunk neu vermaschen: #6
@@ -69,6 +69,7 @@ Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 - [ ] Erste 30-40 Biome vollständig ausbauen (D-009): #17
 - [ ] Abbauen + einfaches Inventar: #18
 - [ ] Oberflächen-Hinweise auf Erze (vom Server gesteuert): #48
+- [ ] Große Regionen (4-8 km) für ein BOTW-Gefühl: #50
 - [ ] Speichern von Weltänderungen (Delta auf den Seed): #19
 
 ## Phase 4: Crafting
@@ -124,6 +125,7 @@ Aktueller Stand immer in den [offenen Issues](https://github.com/chrismaghuhn/Go
 - Viewer ruckelt, wenn gleichzeitig Godot offen ist: #38
 - Umlaute fehlen im Viewer-Overlay: #39
 - Palmen an verschneiten Küsten: #40
+- Kristall-Biome werden praktisch nie erzeugt: #49
 
 ---
 
