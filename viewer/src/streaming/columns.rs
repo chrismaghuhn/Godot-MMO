@@ -190,6 +190,7 @@ pub(super) fn stream_columns(
                 position.y,
                 &column.heights,
                 &column.biomes,
+                &column.temperatures,
             );
             trees.retain(|tree| {
                 let world_x = position.x as f32 * CHUNK_SIZE + tree.position.x;
