@@ -1,4 +1,4 @@
-//! Chunk-Streaming um die Kamera: Jobs im Hintergrund, Einfügen/Entfernen von Chunks.
+//! Spalten-Streaming: Spalten im Sichtradius, pro Spalte die Oberflächen-Chunks und Bäume.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,53 +11,38 @@ use bevy::{
 use terraforge_core::{
     mesh::ChunkMesh,
     vegetation::{TreePlacement, TreeStyle, plan_trees},
-    volume::{self, ColumnData},
+    volume::ColumnData,
 };
 
+use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, TerrainChunk, Tree, camera_chunk};
 use crate::meshes::chunk_mesh_to_bevy;
 use crate::scene::SpawnPoint;
 use crate::{UndergroundRes, WorldRes};
 
-pub const CHUNK_SIZE: f32 = volume::CHUNK_SIZE as f32;
-const CHUNK_JOBS_IN_FLIGHT: usize = 8;
-const CHUNKS_READY_PER_FRAME: usize = 3;
-const CHUNK_DESPAWNS_PER_FRAME: usize = 4;
+const COLUMN_JOBS_IN_FLIGHT: usize = 8;
+const COLUMNS_READY_PER_FRAME: usize = 3;
+const COLUMN_DESPAWNS_PER_FRAME: usize = 4;
 
-pub struct StreamingPlugin;
-
-impl Plugin for StreamingPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<ChunkMap>()
-            .init_resource::<ChunkJobs>()
-            .add_systems(Update, stream_chunks);
-    }
-}
-
-#[derive(Resource)]
-pub struct ChunkAssets {
-    pub terrain_material: Handle<StandardMaterial>,
-    pub tree_material: Handle<StandardMaterial>,
-    pub tree_meshes: Vec<Handle<Mesh>>,
-}
-
+/// Geladene Spalten (Eltern-Entity mit Terrain-Chunks und Bäumen als Kinder).
 #[derive(Resource, Default)]
-pub struct ChunkMap(pub HashMap<IVec2, Entity>);
+pub struct ColumnMap(pub HashMap<IVec2, Entity>);
 
 /// Ergebnis eines Spalten-Jobs: alle 3D-Chunks mit Oberfläche in dieser Spalte.
-struct ChunkBuild {
+struct ColumnBuild {
     position: IVec2,
+    column: Arc<ColumnData>,
     /// (Chunk-Höhe, Mesh) für jeden 3D-Chunk mit Oberfläche.
     meshes: Vec<(i32, Mesh)>,
     trees: Vec<TreePlacement>,
 }
 
 #[derive(Resource, Default)]
-pub struct ChunkJobs {
-    pending: HashMap<IVec2, Task<ChunkBuild>>,
-    ready: Vec<ChunkBuild>,
+pub struct ColumnJobs {
+    pending: HashMap<IVec2, Task<ColumnBuild>>,
+    ready: Vec<ColumnBuild>,
 }
 
-impl ChunkJobs {
+impl ColumnJobs {
     /// Jobs, die gerade im Hintergrund laufen.
     pub fn pending_count(&self) -> usize {
         self.pending.len()
@@ -69,41 +54,33 @@ impl ChunkJobs {
     }
 }
 
-#[derive(Component)]
-pub struct Tree;
-
-/// Ein 3D-Terrain-Chunk (32³) mit Mesh.
-#[derive(Component)]
-pub struct TerrainChunk;
-
 #[derive(SystemParam)]
-struct ChunkContext<'w> {
+pub(super) struct ColumnContext<'w> {
     world: Res<'w, WorldRes>,
     underground: Res<'w, UndergroundRes>,
     assets: Res<'w, ChunkAssets>,
     spawn: Res<'w, SpawnPoint>,
-    chunks: ResMut<'w, ChunkMap>,
-    jobs: ResMut<'w, ChunkJobs>,
+    chunks: ResMut<'w, ColumnMap>,
+    jobs: ResMut<'w, ColumnJobs>,
+    cache: ResMut<'w, ColumnCache>,
 }
 
-fn stream_chunks(
+pub(super) fn stream_columns(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     camera: Query<&Transform, With<Camera3d>>,
-    mut ctx: ChunkContext,
+    mut ctx: ColumnContext,
 ) {
     let Ok(transform) = camera.single() else {
         return;
     };
 
-    let center = IVec2::new(
-        (transform.translation.x / CHUNK_SIZE).floor() as i32,
-        (transform.translation.z / CHUNK_SIZE).floor() as i32,
-    );
+    let center = camera_chunk(transform.translation).xz();
     let radius = ctx.world.0.cfg.view_radius;
     let clearing = ctx.spawn.0;
 
-    let mut despawn_budget = CHUNK_DESPAWNS_PER_FRAME;
+    let mut despawn_budget = COLUMN_DESPAWNS_PER_FRAME;
+    let cache = &mut ctx.cache.0;
     ctx.chunks.0.retain(|position, entity| {
         if (position.x - center.x).abs() > radius + 1 || (position.y - center.y).abs() > radius + 1
         {
@@ -112,6 +89,7 @@ fn stream_chunks(
             }
             despawn_budget -= 1;
             commands.entity(*entity).despawn();
+            cache.remove(position);
             false
         } else {
             true
@@ -154,11 +132,12 @@ fn stream_chunks(
         if far || ctx.chunks.0.contains_key(&position) {
             continue;
         }
-        if inserted >= CHUNKS_READY_PER_FRAME {
+        if inserted >= COLUMNS_READY_PER_FRAME {
             deferred.push(build);
             continue;
         }
-        insert_chunk(
+        ctx.cache.0.insert(position, Arc::clone(&build.column));
+        insert_column(
             &mut commands,
             &mut meshes,
             &ctx.assets,
@@ -188,14 +167,14 @@ fn stream_chunks(
     }
     missing.sort_by_key(|(_, distance)| *distance);
 
-    let slots = CHUNK_JOBS_IN_FLIGHT.saturating_sub(ctx.jobs.pending.len());
+    let slots = COLUMN_JOBS_IN_FLIGHT.saturating_sub(ctx.jobs.pending.len());
     for (position, _) in missing.into_iter().take(slots) {
         let world = Arc::clone(&ctx.world.0);
         let underground = Arc::clone(&ctx.underground.0);
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let column = ColumnData::sample(&world, position.x, position.y);
-            // Höhlen (#4) werden auch Chunks unter der Oberfläche betreffen; dann reicht
-            // `surface_chunks()` nicht mehr und es braucht vertikales Streaming.
+            // Nur Chunks mit Oberfläche (inkl. Höhleneingängen). Reine Höhlen-Chunks
+            // darunter lädt das Höhlen-Streaming in Kameranähe.
             let meshes = column
                 .surface_chunks()
                 .filter_map(|chunk_y| {
@@ -217,8 +196,9 @@ fn stream_chunks(
                 let world_z = position.y as f32 * CHUNK_SIZE + tree.position.z;
                 Vec2::new(world_x - clearing.x, world_z - clearing.z).length() > 17.0
             });
-            ChunkBuild {
+            ColumnBuild {
                 position,
+                column: Arc::new(column),
                 meshes,
                 trees,
             }
@@ -227,17 +207,18 @@ fn stream_chunks(
     }
 }
 
-fn insert_chunk(
+fn insert_column(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     assets: &ChunkAssets,
-    chunks: &mut ChunkMap,
-    build: ChunkBuild,
+    chunks: &mut ColumnMap,
+    build: ColumnBuild,
 ) {
-    let ChunkBuild {
+    let ColumnBuild {
         position,
         meshes: chunk_meshes,
         trees,
+        ..
     } = build;
     // Die Spalte ist der Eltern-Knoten: Streaming und Despawn laufen weiter pro Spalte,
     // die Terrain-Meshes darunter sind echte 3D-Chunks.

@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::controls::WalkMode;
-use crate::streaming::{ChunkJobs, ChunkMap, TerrainChunk, Tree};
+use crate::streaming::{CaveChunk, CaveJobs, ColumnJobs, ColumnMap, TerrainChunk, Tree};
 use crate::WorldRes;
 
 pub struct OverlayPlugin;
@@ -38,11 +38,20 @@ impl Default for PerfStats {
 
 #[derive(SystemParam)]
 struct PerfContext<'w> {
-    chunks: Res<'w, ChunkMap>,
-    jobs: Res<'w, ChunkJobs>,
+    chunks: Res<'w, ColumnMap>,
+    jobs: Res<'w, ColumnJobs>,
+    cave_jobs: Res<'w, CaveJobs>,
     world: Res<'w, WorldRes>,
     walk: Res<'w, WalkMode>,
     stats: ResMut<'w, PerfStats>,
+}
+
+/// Zählt Bäume, Terrain-Chunks und Höhlen-Chunks für die Anzeige.
+#[derive(SystemParam)]
+struct EntityCounts<'w, 's> {
+    trees: Query<'w, 's, (), With<Tree>>,
+    terrain: Query<'w, 's, (), With<TerrainChunk>>,
+    caves: Query<'w, 's, (), With<CaveChunk>>,
 }
 
 fn setup_perf_overlay(mut commands: Commands) {
@@ -71,8 +80,7 @@ fn setup_perf_overlay(mut commands: Commands) {
 fn perf_overlay(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
-    trees: Query<(), With<Tree>>,
-    terrain: Query<(), With<TerrainChunk>>,
+    counts: EntityCounts,
     camera: Query<&Transform, With<Camera3d>>,
     mut overlay: Query<(&mut Text, &mut TextColor, &mut Visibility), With<PerfOverlay>>,
     mut ctx: PerfContext,
@@ -116,7 +124,7 @@ fn perf_overlay(
 
     text.0 = format!(
         "FPS {:>4.0}   Frame {:>5.2} ms   p95 {:>5.2} ms   max {:>5.2} ms\n\
-         Spalten {:>3}   3D-Chunks {:>4}   Jobs {:>1}+{:<1}   Trees {:>5}   Seed {}\n\
+         Spalten {:>3}   3D-Chunks {:>4} (Hoehlen {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Seed {}\n\
          X {:>7.1}   Y {:>6.1}   Z {:>7.1}   {}   [F3]\n\
          {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}",
         fps,
@@ -124,10 +132,12 @@ fn perf_overlay(
         p95,
         max,
         ctx.chunks.0.len(),
-        terrain.iter().count(),
+        counts.terrain.iter().count(),
+        counts.caves.iter().count(),
         ctx.jobs.pending_count(),
         ctx.jobs.ready_count(),
-        trees.iter().count(),
+        ctx.cave_jobs.pending_count(),
+        counts.trees.iter().count(),
         ctx.world.0.cfg.seed,
         position.x,
         position.y,

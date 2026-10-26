@@ -13,7 +13,7 @@ use terraforge_core::{
 use crate::controls::{AutoPilot, WalkMode, WalkState};
 use crate::meshes::tree_geo_to_mesh;
 use crate::streaming::{CHUNK_SIZE, ChunkAssets};
-use crate::WorldRes;
+use crate::{WorldRes, env_parse};
 
 #[derive(Resource)]
 pub struct SpawnPoint(pub Vec3);
@@ -55,16 +55,33 @@ pub fn setup_scene(
     let camera_position = spawn + Vec3::new(0.0, 4.5 + camera_lift, 0.0);
     commands.insert_resource(WalkState(camera_position));
     let look_target = spawn_look(&world.0, spawn);
+    let mut camera_transform =
+        Transform::from_translation(camera_position).looking_at(look_target, Vec3::Y);
+    // Fester Blickwinkel in Grad, z. B. zum Prüfen von Höhlen (Pitch negativ = nach unten).
+    if let Some(pitch) = env_parse::<f32>("TERRAFORGE_PITCH") {
+        let yaw = env_parse::<f32>("TERRAFORGE_YAW").unwrap_or(0.0);
+        camera_transform.rotation =
+            Quat::from_euler(EulerRot::YXZ, yaw.to_radians(), pitch.to_radians(), 0.0);
+    }
 
     let mut camera = commands.spawn((
         Camera3d::default(),
-        Transform::from_translation(camera_position).looking_at(look_target, Vec3::Y),
+        camera_transform,
         FreeCamera {
             walk_speed: 32.0,
             run_speed: 180.0,
             ..default()
         },
     ));
+    // Kopflampe für unter Tage, dort kommt kein Sonnenlicht hin.
+    if std::env::var_os("TERRAFORGE_HEADLAMP").is_some() {
+        camera.with_child(PointLight {
+            intensity: 20_000_000.0,
+            range: 90.0,
+            shadow_maps_enabled: false,
+            ..default()
+        });
+    }
     if std::env::var_os("TERRAFORGE_NO_FOG").is_none() {
         camera.insert(DistanceFog {
             color: Color::srgb(0.62, 0.74, 0.86),
