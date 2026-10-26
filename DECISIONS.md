@@ -356,3 +356,34 @@ Land: < 5° ~16 % → ~33 %, steiler als 30° ~28 % → ~15 % (ergänzt D-007).
 
 **Folgen:** Die ganze Welt hat sich verschoben (Spawn, Karten, Biom-Verteilung). Das Gefühl
 großer Regionen braucht weite Sicht; dafür wird LOD (#33) wichtiger.
+
+## D-015: Schmieden als Simulation statt Rezept
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Schmieden soll ein tiefer Skill werden, kein flaches Rezept-System. Jedes Schwert
+soll einzigartig sein und so aussehen, wie es geschmiedet wurde. Es sollen so wenig Assets wie
+möglich entstehen. Details in [docs/design/schmieden.md](docs/design/schmieden.md).
+
+**Entscheidung:**
+- Eine Klinge ist ein Datenmodell aus Segmenten (Form, Kohlenstoff, Gefüge, Härte, Fehler, …).
+  Jede Aktion verändert es; Werte und Aussehen werden daraus berechnet, nichts wird ausgewürfelt.
+- Simulation und Werte in `core/` (deterministisch, Server und Client gleich). Godot erzeugt nur
+  Mesh und Shader-Parameter aus den Daten, ohne Modelle oder Texturen für die Klinge.
+- Fortschritt über Wissen und Wahrnehmung (genauere Temperatur, Warnungen), nicht über Prozentboni.
+- Die Dauer wächst mit dem Material (von 2-5 Min. für Eisen bis 45+ Min. für Meisterwerke),
+  durch engere Fenster und mehr Schritte statt Timer. Gemeisterte Schritte gehen per Routine schneller.
+- Vorerst kein Totalverlust: Fehler machen die Klinge schlechter, sichtbar und nur teilweise
+  reparierbar. Gespeichert als Schweregrad 0.0-1.0, damit später eine Bruch-Schwelle möglich ist.
+- Gemeinsames Schmieden (Meister, Zuschläger, Heizer) wird im Datenmodell mitgedacht, umgesetzt
+  aber erst mit Multiplayer (D-010).
+
+**Alternativen:**
+- Rezept + Skill-Level → feste Werte: einfach, aber flach, und alle Schwerter gleich.
+- Modellierte Klingen-Assets mit Varianten: widerspricht dem Ziel, alles zu generieren, und
+  Aussehen und Werte hängen nicht zusammen.
+- Totalverlust bei Fehlern: spannender, aber frustrierend, solange das System neu ist.
+
+**Folgen:** Das Datenmodell der Klinge ist das Herzstück und muss vor der Umsetzung festgelegt
+werden. Prozedurale Optik braucht einen klaren Stil, sonst wirkt sie technisch. Ein Schwert wird
+als wenige hundert Bytes übertragen statt als Mesh.
