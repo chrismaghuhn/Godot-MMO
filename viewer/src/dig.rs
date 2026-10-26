@@ -3,6 +3,7 @@
 //! - Linksklick: graben (Kugel, r = 2 m) mit dem aktuellen Werkzeug
 //! - `B`: Erde bauen
 //! - `T`: Werkzeug wechseln. Die Werkzeuge sind vorerst nur Härte-Stufen (echte Werkzeuge in #21).
+//! - `X`: anvisierten Baum fällen (Vorstufe zur Axt, #21; Holz-Ausbeute folgt mit dem Inventar)
 //!
 //! Der Zielpunkt kommt aus einem Strahl von der Kamera, der Voxel abtastet (Änderungen plus
 //! generierter Wert mit Untergrund – der Viewer ist Debug-Tool, D-005). Nach einer Änderung
@@ -20,7 +21,7 @@ use terraforge_core::{
     volume::{CHUNK_SIZE, ChunkKind, ColumnData, DensityChunk},
 };
 
-use crate::streaming::{ColumnCache, DirtyChunks};
+use crate::streaming::{ColumnCache, DirtyChunks, Tree};
 use crate::{EditsRes, UndergroundRes, WorldRes, env_parse};
 
 const DIG_RADIUS: f32 = 2.0;
@@ -38,7 +39,7 @@ impl Plugin for DigPlugin {
             .init_resource::<VoxelCache>()
             .insert_resource(AutoDig { remaining: env_parse("TERRAFORGE_AUTODIG").unwrap_or(0), timer: 0.0 })
             .add_systems(Startup, spawn_crosshair)
-            .add_systems(Update, dig_input);
+            .add_systems(Update, (dig_input, fell_tree));
     }
 }
 
@@ -216,5 +217,49 @@ fn dig_input(
         } else {
             dirty.columns.insert(chunk.xz());
         }
+    }
+}
+
+/// Fällt den Baum, auf den das Fadenkreuz zeigt (Abstand Strahl–Stamm < 1,2 m, Reichweite 32 m).
+fn fell_tree(
+    keys: Res<ButtonInput<KeyCode>>,
+    camera: Query<&Transform, With<Camera3d>>,
+    trees: Query<(&Tree, &GlobalTransform)>,
+    edits: Res<EditsRes>,
+    mut dirty: ResMut<DirtyChunks>,
+    mut status: ResMut<DigStatus>,
+) {
+    if !keys.just_pressed(KeyCode::KeyX) {
+        return;
+    }
+    let Ok(transform) = camera.single() else {
+        return;
+    };
+    let (origin, direction) = (transform.translation, transform.forward().as_vec3());
+    let mut best: Option<(f32, terraforge_core::vegetation::TreeId)> = None;
+    for (tree, global) in &trees {
+        let base = global.translation();
+        let height = 5.0 * global.scale().y;
+        // Kürzester Abstand zwischen Strahl und Stamm (senkrechte Strecke base..base+height),
+        // über Abtastung entlang des Stamms.
+        for i in 0..=10 {
+            let point = base + Vec3::Y * height * i as f32 / 10.0;
+            let along = (point - origin).dot(direction);
+            if !(0.0..=32.0).contains(&along) {
+                continue;
+            }
+            let miss = (origin + direction * along).distance(point);
+            if miss < 1.2 && best.is_none_or(|(d, _)| along < d) {
+                best = Some((along, tree.0));
+            }
+        }
+    }
+    let Some((_, id)) = best else {
+        status.last = "kein Baum im Visier".into();
+        return;
+    };
+    if edits.0.write().expect("Edits-Lock vergiftet").fell_tree(id) {
+        dirty.columns.insert(IVec2::new(id.chunk_x, id.chunk_z));
+        status.last = "Baum gefällt".into();
     }
 }

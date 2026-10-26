@@ -58,8 +58,9 @@ pub struct DirtyChunks {
 #[derive(Resource, Default)]
 pub struct ColumnCache(pub HashMap<IVec2, Arc<ColumnData>>);
 
+/// Ein Baum mit seiner stabilen ID (#7).
 #[derive(Component)]
-pub struct Tree;
+pub struct Tree(pub terraforge_core::vegetation::TreeId);
 
 /// Ein 3D-Terrain-Chunk (32³) mit Mesh, an der Oberfläche oder in einer Höhle.
 #[derive(Component)]

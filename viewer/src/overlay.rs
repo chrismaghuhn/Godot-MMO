@@ -135,7 +135,7 @@ fn perf_overlay(
          Spalten {:>3}   3D-Chunks {:>4} (Höhlen {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Fern {:>3}   Seed {}\n\
          X {:>7.1}   Y {:>6.1}   Z {:>7.1}   {}   [F3]\n\
          {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}\n\
-         [Klick] graben  [B] bauen  [T] {}   {}",
+         [Klick] graben  [B] bauen  [X] fällen  [T] {}   {}",
         fps,
         avg,
         p95,

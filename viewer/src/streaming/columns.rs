@@ -10,8 +10,8 @@ use bevy::{
 };
 use terraforge_core::{
     mesh::ChunkMesh,
-    vegetation::{TreePlacement, TreeStyle, plan_trees},
-    volume::{ChunkKind, ColumnData},
+    vegetation::{TreePlacement, TreeStyle, plan_trees, settle_tree},
+    volume::{self, ChunkKind, ColumnData, DensityChunk},
 };
 
 use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, DirtyChunks, TerrainChunk, Tree, camera_chunk};
@@ -213,20 +213,26 @@ pub(super) fn stream_columns(
                     heights.push(chunk_y);
                 }
             }
-            let meshes = heights
-                .into_iter()
-                .filter_map(|chunk_y| {
-                    let density = if touched.contains(&chunk_y) {
-                        let mut chunk = underground.materials_chunk(&world, &column, chunk_y);
-                        edits.read().expect("Edits-Lock vergiftet").apply(&mut chunk);
-                        chunk
-                    } else {
-                        underground.density_chunk(&world, &column, chunk_y)?
-                    };
-                    let mesh = ChunkMesh::build(&world, &column, &density);
-                    (!mesh.is_empty()).then(|| (chunk_y, chunk_mesh_to_bevy(mesh)))
-                })
-                .collect();
+            // Dichtefelder bleiben für die Bäume erhalten (#7).
+            let mut fields: HashMap<i32, DensityChunk> = HashMap::new();
+            let mut meshes = Vec::new();
+            for chunk_y in heights {
+                let density = if touched.contains(&chunk_y) {
+                    let mut chunk = underground.materials_chunk(&world, &column, chunk_y);
+                    edits.read().expect("Edits-Lock vergiftet").apply(&mut chunk);
+                    chunk
+                } else {
+                    match underground.density_chunk(&world, &column, chunk_y) {
+                        Some(chunk) => chunk,
+                        None => continue,
+                    }
+                };
+                let mesh = ChunkMesh::build(&world, &column, &density);
+                if !mesh.is_empty() {
+                    meshes.push((chunk_y, chunk_mesh_to_bevy(mesh)));
+                }
+                fields.insert(chunk_y, density);
+            }
             let mut trees = plan_trees(
                 world.cfg.seed,
                 world.cfg.sea_level,
@@ -240,6 +246,33 @@ pub(super) fn stream_columns(
                 let world_x = position.x as f32 * CHUNK_SIZE + tree.position.x;
                 let world_z = position.y as f32 * CHUNK_SIZE + tree.position.z;
                 Vec2::new(world_x - clearing.x, world_z - clearing.z).length() > 17.0
+            });
+            // Bäume auf die echte Oberfläche setzen (Höhleneingänge, Gegrabenes, Gebautes) und
+            // gefällte weglassen. Fehlende Dichtefelder (meist massiv) werden nur bei Bedarf gebaut.
+            let origin = Vec3::new(position.x as f32 * CHUNK_SIZE, 0.0, position.y as f32 * CHUNK_SIZE);
+            let mut density = |voxel: IVec3| {
+                let chunk_y = voxel.y.div_euclid(volume::CHUNK_SIZE);
+                let chunk = fields.entry(chunk_y).or_insert_with(|| {
+                    let mut chunk = underground.materials_chunk(&world, &column, chunk_y);
+                    edits.read().expect("Edits-Lock vergiftet").apply(&mut chunk);
+                    chunk
+                });
+                let o = chunk.origin();
+                chunk.get(voxel.x - o.x, voxel.y - o.y, voxel.z - o.z)
+            };
+            trees.retain_mut(|tree| {
+                if edits.read().expect("Edits-Lock vergiftet").is_felled(tree.id) {
+                    return false;
+                }
+                // Lokale Koordinaten: Voxel x/z liegen im eigenen Chunk (0..=32).
+                let root = Vec3::new(tree.position.x, tree.position.y, tree.position.z);
+                match settle_tree(root, |v| density(v + origin.as_ivec3())) {
+                    Some(y) => {
+                        tree.position.y = y;
+                        true
+                    }
+                    None => false,
+                }
             });
             ColumnBuild {
                 position,
@@ -293,7 +326,7 @@ fn insert_column(
         entity.with_children(|parent| {
             for tree in &trees {
                 parent.spawn((
-                    Tree,
+                    Tree(tree.id),
                     Mesh3d(assets.tree_meshes[tree_mesh_index(tree.style, tree.variant)].clone()),
                     MeshMaterial3d(assets.tree_material.clone()),
                     Transform::from_translation(tree.position)

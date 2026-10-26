@@ -421,7 +421,7 @@ fn settled_trees_stand_on_the_volume_surface() {
                 (chunk_z * CHUNK_SIZE) as f32 + tree.position.z,
             );
             // Nur lokale Lookups im eigenen Spalten-Chunk (x, z innerhalb 0..32).
-            let Some(y) = settle_tree(root, |v| density(v)) else { continue };
+            let Some(y) = settle_tree(root, &mut density) else { continue };
             kept += 1;
             let (x, z) = (root.x.round() as i32, root.z.round() as i32);
             let ground = density(glam::IVec3::new(x, (y + 0.25).floor() as i32, z));
