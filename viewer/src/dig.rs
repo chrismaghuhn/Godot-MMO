@@ -144,31 +144,48 @@ fn dig_input(
         return;
     };
 
-    let mut edits = edits.0.write().expect("Edits-Lock vergiftet");
-    let mut source = |voxel: IVec3| cache.voxel(&world, &underground, &columns, voxel);
-    // Strahl: erster Punkt mit festem Voxel (Änderung oder generiert).
+    // Strahl: erster Punkt mit festem Voxel (Änderung oder generiert). Nur Lese-Lock, damit
+    // laufende Jobs nicht blockiert werden.
     let origin = transform.translation;
     let direction = transform.forward().as_vec3();
-    let mut hit = None;
-    let mut distance = 0.0;
-    while distance < REACH {
-        let point = origin + direction * distance;
-        let voxel = point.round().as_ivec3();
-        let value = edits.get(voxel).unwrap_or_else(|| source(voxel));
-        if value.density > 0.0 {
-            hit = Some(point);
-            break;
+    let hit = {
+        let edits = edits.0.read().expect("Edits-Lock vergiftet");
+        let mut hit = None;
+        let mut distance = 0.0;
+        while distance < REACH {
+            let point = origin + direction * distance;
+            let voxel = point.round().as_ivec3();
+            let value = edits.get(voxel).unwrap_or_else(|| cache.voxel(&world, &underground, &columns, voxel));
+            if value.density > 0.0 {
+                hit = Some(point);
+                break;
+            }
+            distance += RAY_STEP;
         }
-        distance += RAY_STEP;
-    }
+        hit
+    };
     let Some(hit) = hit else {
         status.last = "kein Ziel in Reichweite".into();
         return;
     };
+    let center = if dig { hit } else { hit - direction * (BUILD_RADIUS * 0.8) };
+    let radius = if dig { DIG_RADIUS } else { BUILD_RADIUS } + 1.0;
+
+    // Chunks der Kugel vorladen (teuer, ohne Lock); danach braucht das Graben nur noch den Cache.
+    // Vorher Platz schaffen, damit der Cache nicht mitten im Vorladen geleert wird.
+    if cache.0.len() > 48 {
+        cache.0.clear();
+    }
+    let (min, max) = ((center - Vec3::splat(radius)).floor().as_ivec3(), (center + Vec3::splat(radius)).ceil().as_ivec3());
+    for corner in [min, max, IVec3::new(min.x, min.y, max.z), IVec3::new(min.x, max.y, min.z), IVec3::new(max.x, min.y, min.z), IVec3::new(max.x, max.y, min.z), IVec3::new(max.x, min.y, max.z), IVec3::new(min.x, max.y, max.z)] {
+        cache.voxel(&world, &underground, &columns, corner);
+    }
+    let mut edits = edits.0.write().expect("Edits-Lock vergiftet");
+    let mut source = |voxel: IVec3| cache.voxel(&world, &underground, &columns, voxel);
 
     let affected = if dig {
         let (name, hardness) = TOOLS[status.tool];
-        let result = edits.dig_sphere(&world.0.materials, &mut source, hit, DIG_RADIUS, hardness);
+        let result = edits.dig_sphere(&world.0.materials, &mut source, center, DIG_RADIUS, hardness);
         let mut parts: Vec<String> = result
             .removed
             .iter()
@@ -183,14 +200,15 @@ fn dig_input(
         status.last = if parts.is_empty() { "nichts abgebaut".into() } else { parts.join(", ") };
         result.affected
     } else {
-        // Etwas vor die Oberfläche setzen, damit die Kugel auf dem Boden sitzt.
-        let center = hit - direction * (BUILD_RADIUS * 0.8);
+        // Etwas vor die Oberfläche gesetzt (siehe `center`), damit die Kugel auf dem Boden sitzt.
         let result = edits.place_sphere(&mut source, center, BUILD_RADIUS, MaterialId::DIRT);
         status.last = format!("{} Erde gebaut", result.placed);
         result.affected
     };
 
-    // Massive Chunks baut das Höhlen-Streaming neu, alle anderen die Spalte.
+    // Massive Chunks baut das Höhlen-Streaming neu, alle anderen die Spalte. Ist die Spalte
+    // nicht geladen, geht die Markierung an die Spalten und verfällt dort (beim Laden wird die
+    // Änderung ohnehin angewendet).
     for chunk in affected {
         let solid = columns.0.get(&chunk.xz()).is_some_and(|column| column.classify(chunk.y) == ChunkKind::Solid);
         if solid {

@@ -156,16 +156,21 @@ pub(super) fn stream_columns(
     }
     ctx.jobs.ready = deferred;
 
-    // Neubau veränderter Spalten zuerst. Läuft schon ein Job für die Spalte, warten (er kennt
-    // die Änderung evtl. nicht); nicht geladene Spalten bekommen die Änderung beim Laden.
+    // Neubau veränderter Spalten zuerst. Läuft für die Spalte schon ein Job oder wartet ein
+    // fertiger auf das Einfügen, bleibt die Markierung (der Job kennt die Änderung evtl. nicht)
+    // und der Neubau folgt danach. Die Markierung verschwindet erst, wenn ein Job startet.
     let mut missing = Vec::new();
     let dirty: Vec<IVec2> = ctx.dirty.columns.iter().copied().collect();
     for position in dirty {
-        if !ctx.chunks.0.contains_key(&position) {
-            ctx.dirty.columns.remove(&position);
-        } else if !ctx.jobs.pending.contains_key(&position) {
-            ctx.dirty.columns.remove(&position);
+        let in_flight = ctx.jobs.pending.contains_key(&position) || ctx.jobs.ready.iter().any(|b| b.position == position);
+        if in_flight {
+            continue;
+        }
+        if ctx.chunks.0.contains_key(&position) {
             missing.push((position, -1, true));
+        } else {
+            // Nicht geladen und kein Job: Beim Laden wird die Änderung ohnehin angewendet.
+            ctx.dirty.columns.remove(&position);
         }
     }
     for dz in -radius..=radius {
@@ -188,6 +193,9 @@ pub(super) fn stream_columns(
 
     let slots = COLUMN_JOBS_IN_FLIGHT.saturating_sub(ctx.jobs.pending.len());
     for (position, _, rebuild) in missing.into_iter().take(slots) {
+        if rebuild {
+            ctx.dirty.columns.remove(&position);
+        }
         let world = Arc::clone(&ctx.world.0);
         let underground = Arc::clone(&ctx.underground.0);
         let edits = Arc::clone(&ctx.edits.0);
@@ -195,12 +203,12 @@ pub(super) fn stream_columns(
         let cached = if rebuild { ctx.cache.0.get(&position).cloned() } else { None };
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let column = cached.unwrap_or_else(|| Arc::new(ColumnData::sample(&world, position.x, position.y)));
-            let edits = edits.read().expect("Edits-Lock vergiftet");
             // Chunks mit Oberfläche (inkl. Höhleneingängen) und veränderte Chunks, die laut
             // Generator Luft sind (z. B. Gebautes). Massive Chunks – auch veränderte – lädt das
-            // Höhlen-Streaming in Kameranähe.
+            // Höhlen-Streaming. Das Lock nur kurz halten, damit Graben nicht auf Jobs wartet.
+            let touched = edits.read().expect("Edits-Lock vergiftet").touched_in_column(position.x, position.y);
             let mut heights: Vec<i32> = column.surface_chunks().collect();
-            for chunk_y in edits.touched_in_column(position.x, position.y) {
+            for &chunk_y in &touched {
                 if column.classify(chunk_y) == ChunkKind::Air && !heights.contains(&chunk_y) {
                     heights.push(chunk_y);
                 }
@@ -208,10 +216,9 @@ pub(super) fn stream_columns(
             let meshes = heights
                 .into_iter()
                 .filter_map(|chunk_y| {
-                    let chunk_position = IVec3::new(position.x, chunk_y, position.y);
-                    let density = if edits.touches(chunk_position) {
+                    let density = if touched.contains(&chunk_y) {
                         let mut chunk = underground.materials_chunk(&world, &column, chunk_y);
-                        edits.apply(&mut chunk);
+                        edits.read().expect("Edits-Lock vergiftet").apply(&mut chunk);
                         chunk
                     } else {
                         underground.density_chunk(&world, &column, chunk_y)?

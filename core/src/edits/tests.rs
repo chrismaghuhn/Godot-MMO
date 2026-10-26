@@ -233,3 +233,72 @@ fn chunks_containing_matches_the_sample_ranges() {
         assert_eq!(listed, expected, "Voxel {voxel}");
     }
 }
+
+/// Gespeicherte Voxel halten die Invariante Dichte <= 0 ⇔ Luft (Review-Fund: `place_sphere`
+/// speicherte im Randband Luft mit Material).
+#[test]
+fn stored_voxels_keep_the_air_invariant() {
+    let world = WorldGen::new(42);
+    let mut source = Source::new(&world);
+    let mut edits = WorldEdits::default();
+    let air = Vec::from([Vec3::new(5.0, world.column_height(5.0, 5.0) + 8.0, 5.0)]);
+    for center in air {
+        edits.place_sphere(|v| source.voxel(v), center, 1.5, MaterialId::DIRT);
+        edits.dig_sphere(&world.materials, |v| source.voxel(v), center + Vec3::X, 1.0, 10.0);
+    }
+    let surface = Vec3::new(-20.0, world.column_height(-20.0, 30.0), 30.0);
+    edits.dig_sphere(&world.materials, |v| source.voxel(v), surface, 2.5, 10.0);
+    edits.place_sphere(|v| source.voxel(v), surface, 1.8, MaterialId::SAND);
+    let mut checked = 0;
+    for owner in edits.by_owner.values() {
+        for value in owner.values() {
+            assert_eq!(value.density <= 0.0, value.material.is_air(), "{value:?}");
+            checked += 1;
+        }
+    }
+    assert!(checked > 100);
+}
+
+/// Wiederholtes Graben und Bauen bei negativen Koordinaten, quer über Chunk-Grenzen.
+#[test]
+fn repeated_edits_at_negative_coordinates() {
+    let world = WorldGen::new(42);
+    let mut source = Source::new(&world);
+    let mut edits = WorldEdits::default();
+    let start = Vec3::new(-32.0, world.column_height(-32.0, -64.0) - 1.0, -64.0);
+    let mut total = 0;
+    for step in 0..6 {
+        let center = start + Vec3::new(-1.5 * step as f32, -(step as f32), 0.7 * step as f32);
+        let result = edits.dig_sphere(&world.materials, |v| source.voxel(v), center, 2.0, 10.0);
+        total += result.removed.values().sum::<u32>();
+        // Nach jedem Schritt: Kugelinneres ist Luft, betroffene Chunks halten die Invariante.
+        for voxel in sphere_voxels(center, 2.0) {
+            let value = edits.get(voxel).unwrap_or_else(|| source.voxel(voxel));
+            assert!(value.density <= 0.0, "Voxel {voxel} nicht ausgehöhlt");
+        }
+        for chunk in result.affected {
+            source.edited(&edits, chunk).assert_material_invariant();
+        }
+    }
+    // Überlappende Kugeln: Bereits Gegrabenes wird nicht doppelt gezählt.
+    assert!(total > 100 && total < 6 * 34, "Ausbeute {total} passt nicht zu überlappenden Kugeln");
+}
+
+/// Ein Chunk, dessen einzige Änderung im Besitzer-Chunk des Nachbarn liegt (seine Randlage),
+/// bekommt sie trotzdem.
+#[test]
+fn apply_reaches_edits_owned_by_a_neighbour() {
+    let world = WorldGen::new(42);
+    let mut source = Source::new(&world);
+    let mut edits = WorldEdits::default();
+    // Voxel x = 32 gehört Chunk 1, ist aber Sample x = 32 von Chunk 0 (dessen Randlage).
+    let voxel = IVec3::new(32, (world.column_height(32.0, 5.0) - 3.0) as i32, 5);
+    edits.dig_sphere(&world.materials, |v| source.voxel(v), voxel.as_vec3(), 0.4, 10.0);
+    assert_eq!(owner_chunk(voxel).x, 1);
+    let left = owner_chunk(voxel) - IVec3::X;
+    assert!(edits.touches(left));
+    let chunk = source.edited(&edits, left);
+    let local = voxel - chunk.origin();
+    assert_eq!(local.x, CHUNK_SIZE);
+    assert!(chunk.get(local.x, local.y, local.z) <= 0.0, "Änderung des Nachbarn fehlt");
+}

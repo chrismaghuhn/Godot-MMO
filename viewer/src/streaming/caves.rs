@@ -92,10 +92,22 @@ pub(super) fn stream_caves(
     let center = camera_chunk(transform.translation);
     let radius = ctx.settings.radius;
 
+    // Veränderte massive Chunks gelten in allen geladenen Spalten, nicht nur im Höhlen-Radius
+    // und auch unter CAVE_MIN_Y (sonst stünde ein gegrabener Schacht offen über dem Nichts).
+    let touched: std::collections::HashSet<IVec3> = ctx
+        .edits
+        .0
+        .read()
+        .expect("Edits-Lock vergiftet")
+        .touched_chunks()
+        .filter(|c| ctx.cache.0.get(&c.xz()).is_some_and(|column| column.classify(c.y) == ChunkKind::Solid))
+        .collect();
+    let wanted = |position: IVec3, margin: i32| distance(position, center) <= radius + margin || touched.contains(&position);
+
     // 1. Weit entfernte Chunks entfernen (mit Budget), laufende Jobs dort verwerfen.
     let mut despawn_budget = CAVE_DESPAWNS_PER_FRAME;
     ctx.map.0.retain(|&position, entity| {
-        if distance(position, center) <= radius + 1 {
+        if wanted(position, 1) {
             return true;
         }
         match entity {
@@ -108,7 +120,7 @@ pub(super) fn stream_caves(
             None => false,
         }
     });
-    ctx.jobs.pending.retain(|&position, _| distance(position, center) <= radius + 2);
+    ctx.jobs.pending.retain(|&position, _| wanted(position, 2));
 
     // 2. Fertige Jobs einsammeln und mit Budget einfügen (nächste zuerst).
     let mut finished = Vec::new();
@@ -121,7 +133,7 @@ pub(super) fn stream_caves(
     });
     let mut ready = std::mem::take(&mut ctx.jobs.ready);
     ready.extend(finished);
-    ready.retain(|build| distance(build.position, center) <= radius + 1);
+    ready.retain(|build| wanted(build.position, 1));
     ready.sort_by_key(|build| distance(build.position, center));
     let mut inserted = 0;
     for build in ready {
@@ -173,36 +185,52 @@ pub(super) fn stream_caves(
             }
         }
     }
+    for &position in &touched {
+        let known = ctx.map.0.contains_key(&position)
+            || ctx.jobs.pending.contains_key(&position)
+            || ctx.jobs.ready.iter().any(|build| build.position == position)
+            || missing.iter().any(|(p, _)| *p == position);
+        if !known && let Some(column) = ctx.cache.0.get(&position.xz()) {
+            missing.push((position, Arc::clone(column)));
+        }
+    }
     missing.sort_by_key(|(position, _)| distance(*position, center));
 
     // Veränderte massive Chunks zuerst neu bauen (nur bereits bearbeitete Positionen; der Rest
     // bekommt die Änderung beim ersten Laden).
+    // Die Markierung bleibt, solange schon ein Job für die Position läuft oder fertig wartet,
+    // und verschwindet erst, wenn der Neubau-Job startet.
     let dirty: Vec<IVec3> = ctx.dirty.caves.iter().copied().collect();
+    let mut rebuilds = Vec::new();
     for position in dirty {
-        let column = ctx.cache.0.get(&position.xz()).cloned();
-        match column {
-            Some(column) if ctx.map.0.contains_key(&position) => {
-                if !ctx.jobs.pending.contains_key(&position) {
-                    ctx.dirty.caves.remove(&position);
-                    missing.insert(0, (position, column));
-                }
-            }
+        let in_flight = ctx.jobs.pending.contains_key(&position) || ctx.jobs.ready.iter().any(|b| b.position == position);
+        if in_flight {
+            continue;
+        }
+        match ctx.cache.0.get(&position.xz()) {
+            Some(column) if ctx.map.0.contains_key(&position) => rebuilds.push((position, Arc::clone(column))),
             _ => {
+                // Nicht geladen und kein Job: Beim Laden wird die Änderung ohnehin angewendet.
                 ctx.dirty.caves.remove(&position);
             }
         }
     }
+    missing.retain(|(p, _)| !rebuilds.iter().any(|(r, _)| r == p));
+    rebuilds.extend(missing);
+    let missing = rebuilds;
 
     let slots = CAVE_JOBS_IN_FLIGHT.saturating_sub(ctx.jobs.pending.len());
     for (position, column) in missing.into_iter().take(slots) {
+        ctx.dirty.caves.remove(&position);
         let world = Arc::clone(&ctx.world.0);
         let underground = Arc::clone(&ctx.underground.0);
         let edits = Arc::clone(&ctx.edits.0);
         let task = AsyncComputeTaskPool::get().spawn(async move {
-            let edits = edits.read().expect("Edits-Lock vergiftet");
-            let density = if edits.touches(position) {
+            // Lock nur kurz halten, damit Graben nicht auf Jobs wartet.
+            let touched = edits.read().expect("Edits-Lock vergiftet").touches(position);
+            let density = if touched {
                 let mut chunk = underground.materials_chunk(&world, &column, position.y);
-                edits.apply(&mut chunk);
+                edits.read().expect("Edits-Lock vergiftet").apply(&mut chunk);
                 Some(chunk)
             } else {
                 underground.density_chunk(&world, &column, position.y)

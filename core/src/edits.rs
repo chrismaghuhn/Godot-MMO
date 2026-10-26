@@ -10,8 +10,13 @@
 //! (für das Inventar, #18).
 //!
 //! Dieses Modul kennt keinen Generator: Der aktuelle, ungeänderte Wert eines Voxels kommt über
-//! eine Funktion (`source`) – beim Server mit Untergrund, im Client vom Server gesendet. Die
-//! Änderungen selbst sind öffentlich (jeder sieht das Loch), D-005 bleibt unberührt.
+//! eine Funktion (`source`) – beim Server mit Untergrund.
+//!
+//! **Hinweis für den Server (D-005):** Die gespeicherten Änderungen allein reichen einem Client
+//! mit nur öffentlichen Daten nicht: Für Voxel, die im geheimen Feld schon Luft (Höhlen) oder zu
+//! hart sind, wird nichts gespeichert. Der Server muss für geänderte Chunks die fertigen
+//! Voxeldaten senden, nicht nur die Änderungen. Was dadurch sichtbar wird, sind nur Wände, die
+//! ohnehin freiliegen.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -94,6 +99,11 @@ impl WorldEdits {
     /// Hat der Chunk (in seinem Sample-Bereich) irgendeine Änderung?
     pub fn touches(&self, chunk: IVec3) -> bool {
         self.touched.contains(&chunk)
+    }
+
+    /// Alle Chunks mit Änderungen im Sample-Bereich.
+    pub fn touched_chunks(&self) -> impl Iterator<Item = IVec3> + '_ {
+        self.touched.iter().copied()
     }
 
     /// Geänderte Chunks einer Spalte (x/z), nach Höhe sortiert.
@@ -192,7 +202,15 @@ impl WorldEdits {
             if fill <= old.density {
                 continue;
             }
-            let new = Voxel { density: fill, material: if old.density > 0.0 { old.material } else { material } };
+            // Invariante auch im Speicher: Dichte <= 0 ⇔ Luft (Review-Fund; `get` ist öffentlich).
+            let new_material = if fill <= 0.0 {
+                MaterialId::AIR
+            } else if old.density > 0.0 {
+                old.material
+            } else {
+                material
+            };
+            let new = Voxel { density: fill, material: new_material };
             if fill > 0.0 && old.density <= 0.0 {
                 result.placed += 1;
             }
