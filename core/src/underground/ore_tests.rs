@@ -222,3 +222,129 @@ fn purity_exists_only_where_the_province_has_the_ore() {
     }
     assert!(with >= 4);
 }
+
+/// Voxel-Belegung über Chunk-Grenzen hinweg (für Filter-Tests).
+struct Chunks<'a> {
+    world: &'a WorldGen,
+    underground: &'a Underground,
+    columns: HashMap<(i32, i32), ColumnData>,
+    chunks: HashMap<glam::IVec3, DensityChunk>,
+}
+
+impl<'a> Chunks<'a> {
+    fn new(world: &'a WorldGen, underground: &'a Underground) -> Self {
+        Self { world, underground, columns: HashMap::new(), chunks: HashMap::new() }
+    }
+
+    fn column(&mut self, x: i32, z: i32) -> &ColumnData {
+        let world = self.world;
+        self.columns.entry((x, z)).or_insert_with(|| ColumnData::sample(world, x, z))
+    }
+
+    fn chunk(&mut self, position: glam::IVec3) -> &DensityChunk {
+        if !self.chunks.contains_key(&position) {
+            let (world, underground) = (self.world, self.underground);
+            let column = self.column(position.x, position.z);
+            let chunk = underground.materials_chunk(world, column, position.y);
+            self.chunks.insert(position, chunk);
+        }
+        &self.chunks[&position]
+    }
+
+    fn air(&mut self, voxel: glam::IVec3) -> bool {
+        let owner = voxel.div_euclid(glam::IVec3::splat(CHUNK_SIZE));
+        let local = voxel - owner * CHUNK_SIZE;
+        self.chunk(owner).get(local.x, local.y, local.z) <= 0.0
+    }
+
+    /// Für Clients gefilterter Chunk.
+    fn filtered(&mut self, position: glam::IVec3) -> DensityChunk {
+        let (world, underground) = (self.world, self.underground);
+        let column = ColumnData::sample(world, position.x, position.z);
+        let mut chunk = underground.materials_chunk(world, &column, position.y);
+        hide_unexposed_ores(&mut chunk, &column, |v| self.air(v));
+        chunk
+    }
+}
+
+/// #46: Nach dem Filter hat jedes verbleibende Erz einen Luft-Nachbarn; verborgene Erze zeigen
+/// genau das öffentliche Gestein; alles andere bleibt unverändert; freiliegende Erze bleiben.
+#[test]
+fn client_chunks_show_only_exposed_ores() {
+    let (world, underground) = setup(21);
+    let mut cache = Chunks::new(&world, &underground);
+    let (mut hidden, mut exposed) = (0, 0);
+    for column in columns(&world).into_iter().take(16) {
+        for chunk_y in -4..=1 {
+            let position = glam::IVec3::new(column.chunk_x, chunk_y, column.chunk_z);
+            let full = underground.materials_chunk(&world, &column, chunk_y);
+            let public = DensityChunk::from_column(&column, chunk_y);
+            let filtered = cache.filtered(position);
+            let origin = full.origin();
+            for_each_sample(|x, y, z| {
+                let (before, after) = (full.material(x, y, z), filtered.material(x, y, z));
+                assert_eq!(full.get(x, y, z).to_bits(), filtered.get(x, y, z).to_bits(), "Dichte verändert");
+                let voxel = origin + glam::IVec3::new(x, y, z);
+                let has_air = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
+                    .iter()
+                    .any(|&(dx, dy, dz)| cache.air(voxel + glam::IVec3::new(dx, dy, dz)));
+                match (OreKind::from_material(before), OreKind::from_material(after)) {
+                    (Some(_), Some(_)) => {
+                        assert!(has_air, "verborgenes Erz übertragen bei {voxel}");
+                        assert_eq!(before, after);
+                        exposed += 1;
+                    }
+                    (Some(_), None) => {
+                        assert!(!has_air, "freiliegendes Erz entfernt bei {voxel}");
+                        assert_eq!(after, public.material(x, y, z), "verborgenes Erz zeigt nicht das öffentliche Gestein");
+                        hidden += 1;
+                    }
+                    (None, None) => assert_eq!(before, after, "Nicht-Erz verändert"),
+                    (None, Some(_)) => panic!("Filter hat Erz erzeugt"),
+                }
+            });
+        }
+    }
+    eprintln!("Erz-Voxel: {hidden} verborgen, {exposed} freiliegend");
+    assert!(hidden > 1000 && exposed > 0, "Testgebiet zu klein: {hidden} verborgen, {exposed} frei");
+}
+
+/// Gefilterte Nachbar-Chunks stimmen an gemeinsamen Samples überein (auf allen 3 Achsen).
+#[test]
+fn filtered_chunks_agree_on_shared_samples() {
+    let (world, underground) = setup(22);
+    let mut cache = Chunks::new(&world, &underground);
+    let mut ore_on_faces = 0;
+    for (chunk_x, chunk_z) in [(0, 0), (-13, 26), (26, -13)] {
+        for chunk_y in -3..=0 {
+            let a = cache.filtered(glam::IVec3::new(chunk_x, chunk_y, chunk_z));
+            for axis in 0..3 {
+                let mut offset = glam::IVec3::ZERO;
+                offset[axis] = 1;
+                let b = cache.filtered(glam::IVec3::new(chunk_x, chunk_y, chunk_z) + offset);
+                for layer in [-1, 0] {
+                    for v in SAMPLE_MIN..=CHUNK_SIZE {
+                        for u in SAMPLE_MIN..=CHUNK_SIZE {
+                            let (i, j) = match axis {
+                                0 => (1, 2),
+                                1 => (0, 2),
+                                _ => (0, 1),
+                            };
+                            let (mut pa, mut pb) = ([0; 3], [0; 3]);
+                            pa[axis] = CHUNK_SIZE + layer;
+                            pb[axis] = layer;
+                            (pa[i], pa[j]) = (u, v);
+                            (pb[i], pb[j]) = (u, v);
+                            let (ma, mb) = (a.material(pa[0], pa[1], pa[2]), b.material(pb[0], pb[1], pb[2]));
+                            assert_eq!(ma, mb, "Material-Naht nach Filter, Achse {axis}");
+                            if OreKind::from_material(ma).is_some() {
+                                ore_on_faces += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(ore_on_faces > 0, "kein freiliegendes Erz an einer Chunk-Grenze im Test");
+}
