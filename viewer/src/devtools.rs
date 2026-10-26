@@ -2,8 +2,11 @@
 
 use bevy::{
     prelude::*,
-    render::view::screenshot::{Screenshot, save_to_disk},
+    render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk},
+    window::PrimaryWindow,
 };
+
+const SHOT_PATH: &str = "shots/auto.png";
 
 pub struct DevToolsPlugin;
 
@@ -66,7 +69,11 @@ struct ShotState {
     requested: bool,
 }
 
-fn auto_screenshot(mut commands: Commands, mut state: ResMut<ShotState>) {
+fn auto_screenshot(
+    mut commands: Commands,
+    mut state: ResMut<ShotState>,
+    window: Query<&Window, With<PrimaryWindow>>,
+) {
     if std::env::var_os("TERRAFORGE_SHOT").is_none() || state.requested {
         return;
     }
@@ -75,11 +82,24 @@ fn auto_screenshot(mut commands: Commands, mut state: ResMut<ShotState>) {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(240);
-    if state.frame >= after {
+    // Solange das Fenster (noch) keine echte Größe hat, wäre die Swapchain 1×1 (#34).
+    let sized = window
+        .single()
+        .is_ok_and(|window| window.physical_width() > 1 && window.physical_height() > 1);
+    if state.frame >= after && sized {
         std::fs::create_dir_all("shots").ok();
-        commands
-            .spawn(Screenshot::primary_window())
-            .observe(save_to_disk("shots/auto.png"));
+        commands.spawn(Screenshot::primary_window()).observe(save_shot);
         state.requested = true;
     }
+}
+
+/// Speichert den Screenshot. Ein leeres 1×1-Bild wird verworfen und neu angefordert (#34).
+fn save_shot(captured: On<ScreenshotCaptured>, mut state: ResMut<ShotState>) {
+    let size = captured.image.size();
+    if size.x <= 1 || size.y <= 1 {
+        warn!("Screenshot ist nur {}×{} Pixel, neuer Versuch", size.x, size.y);
+        state.requested = false;
+        return;
+    }
+    save_to_disk(SHOT_PATH)(captured);
 }

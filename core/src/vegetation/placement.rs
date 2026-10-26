@@ -9,6 +9,11 @@ use crate::world::BiomeRef;
 
 const TAU: f32 = std::f32::consts::TAU;
 
+/// Unter dieser Temperatur wachsen an Küsten Nadelbäume wie im Kaltwald/Schnee.
+const COAST_COLD: f32 = -0.20;
+/// Ab dieser Temperatur stehen an Küsten Palmen (Tropenwald beginnt bei 0.22).
+const COAST_WARM: f32 = 0.15;
+
 pub fn plan_trees<const N: usize>(
     seed: u32,
     sea_level: f32,
@@ -16,6 +21,7 @@ pub fn plan_trees<const N: usize>(
     chunk_z: i32,
     heights: &[[f32; N]; N],
     biomes: &[[BiomeRef; N]; N],
+    temperatures: &[[f32; N]; N],
 ) -> Vec<TreePlacement> {
     let cells = N.saturating_sub(3);
     let mut trees = Vec::new();
@@ -60,7 +66,7 @@ pub fn plan_trees<const N: usize>(
                 continue;
             }
 
-            let (style, variant) = pick_style(kind, &mut rng);
+            let (style, variant) = pick_style(kind, temperatures[z + 1][x + 1], &mut rng);
             if slope > 13.0 && style != TreeStyle::Cactus {
                 continue;
             }
@@ -169,6 +175,19 @@ const STYLE_COAST: &[(TreeStyle, usize, f32)] = &[
     (TreeStyle::Broadleaf, 0, 0.14),
 ];
 
+const STYLE_COAST_TEMPERATE: &[(TreeStyle, usize, f32)] = &[
+    (TreeStyle::Broadleaf, 0, 0.48),
+    (TreeStyle::Conifer, 0, 0.30),
+    (TreeStyle::Broadleaf, 1, 0.14),
+    (TreeStyle::Dead, 0, 0.08),
+];
+
+const STYLE_COAST_COLD: &[(TreeStyle, usize, f32)] = &[
+    (TreeStyle::Conifer, 2, 0.48),
+    (TreeStyle::Conifer, 1, 0.34),
+    (TreeStyle::Dead, 1, 0.18),
+];
+
 const STYLE_FUNGI: &[(TreeStyle, usize, f32)] = &[
     (TreeStyle::Mushroom, 0, 0.40),
     (TreeStyle::Mushroom, 1, 0.25),
@@ -185,8 +204,11 @@ const STYLE_CRYSTAL: &[(TreeStyle, usize, f32)] = &[
 
 const STYLE_NONE: &[(TreeStyle, usize, f32)] = &[];
 
-fn pick_style(kind: FamilyKind, rng: &mut Rng) -> (TreeStyle, usize) {
+fn pick_style(kind: FamilyKind, temperature: f32, rng: &mut Rng) -> (TreeStyle, usize) {
     let table = match kind {
+        // Küsten gibt es in jedem Klima: Palmen nur, wo es warm ist (#40).
+        FamilyKind::Coast if temperature < COAST_COLD => STYLE_COAST_COLD,
+        FamilyKind::Coast if temperature < COAST_WARM => STYLE_COAST_TEMPERATE,
         FamilyKind::TemperateForest => STYLE_TEMPERATE,
         FamilyKind::TropicalForest => STYLE_TROPICAL,
         FamilyKind::ColdForest => STYLE_COLD,
@@ -214,4 +236,30 @@ fn pick_style(kind: FamilyKind, rng: &mut Rng) -> (TreeStyle, usize) {
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const N: usize = 35;
+
+    fn coast_trees(temperature: f32) -> Vec<TreePlacement> {
+        let heights = [[40.0; N]; N];
+        let biomes = [[BiomeRef { kind: FamilyKind::Coast, variant: 0 }; N]; N];
+        let temperatures = [[temperature; N]; N];
+        (0..40)
+            .flat_map(|chunk| plan_trees(42, 32.0, chunk, -chunk, &heights, &biomes, &temperatures))
+            .collect()
+    }
+
+    #[test]
+    fn palms_only_grow_on_warm_coasts() {
+        // #40: Vorher standen an verschneiten Küsten Palmen.
+        let cold = coast_trees(-0.6);
+        assert!(!cold.is_empty());
+        assert!(cold.iter().all(|tree| tree.style != TreeStyle::Palm), "Palmen an kalter Küste");
+        assert!(coast_trees(0.0).iter().all(|tree| tree.style != TreeStyle::Palm));
+        assert!(coast_trees(0.5).iter().any(|tree| tree.style == TreeStyle::Palm));
+    }
 }

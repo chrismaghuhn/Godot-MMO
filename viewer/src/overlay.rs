@@ -54,11 +54,16 @@ struct EntityCounts<'w, 's> {
     caves: Query<'w, 's, (), With<CaveChunk>>,
 }
 
-fn setup_perf_overlay(mut commands: Commands) {
+/// Bevys Standardschrift (Fira Mono, Teilmenge) hat keine Umlaute, Biom-Namen brauchen sie (#39).
+const OVERLAY_FONT: &[u8] = include_bytes!("../assets/fonts/DejaVuSansMono.ttf");
+
+fn setup_perf_overlay(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
+    let font = fonts.add(Font::from_bytes(OVERLAY_FONT.to_vec()));
     commands.spawn((
         PerfOverlay,
         Text::new("FPS ..."),
         TextFont {
+            font: font.into(),
             font_size: FontSize::Px(14.0),
             ..default()
         },
@@ -124,7 +129,7 @@ fn perf_overlay(
 
     text.0 = format!(
         "FPS {:>4.0}   Frame {:>5.2} ms   p95 {:>5.2} ms   max {:>5.2} ms\n\
-         Spalten {:>3}   3D-Chunks {:>4} (Hoehlen {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Seed {}\n\
+         Spalten {:>3}   3D-Chunks {:>4} (Höhlen {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Seed {}\n\
          X {:>7.1}   Y {:>6.1}   Z {:>7.1}   {}   [F3]\n\
          {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}",
         fps,

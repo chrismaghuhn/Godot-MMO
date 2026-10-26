@@ -118,14 +118,9 @@ Wenn nicht: hier nachbessern, bevor Netzwerk dazukommt.
 
 Aktueller Stand immer in den [offenen Issues](https://github.com/chrismaghuhn/Godot-MMO/issues?q=is%3Aopen+label%3Abug%2Ctech-debt).
 
-- Viewer-Screenshot speichert nur 1×1 Pixel: #34
-- Flussufer sehr steil: #35
 - Gebirgsränder blockartig: #36
 - 8 doppelte Biom-Namen: #37
 - Viewer ruckelt, wenn gleichzeitig Godot offen ist: #38
-- Umlaute fehlen im Viewer-Overlay: #39
-- Palmen an verschneiten Küsten: #40
-- Kristall-Biome werden praktisch nie erzeugt: #49
 
 ---
 

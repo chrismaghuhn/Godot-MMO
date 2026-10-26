@@ -34,6 +34,8 @@ pub struct ColumnData {
     pub heights: [[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES],
     /// Biome mit derselben Indizierung wie `heights`.
     pub biomes: [[BiomeRef; COLUMN_SAMPLES]; COLUMN_SAMPLES],
+    /// Temperatur (-1..1) mit derselben Indizierung wie `heights`, z. B. für die Baumart (#40).
+    pub temperatures: [[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES],
     /// Geologie pro Spalte, Indizierung wie `heights` (#44).
     geology: Vec<ColumnGeology>,
     /// Fluss-Faktor 0..1 pro Spalte (öffentlich, Flüsse sind sichtbar), Indizierung wie `heights`.
@@ -58,6 +60,7 @@ impl ColumnData {
             chunk_z,
             heights: [[0.0; COLUMN_SAMPLES]; COLUMN_SAMPLES],
             biomes: [[default_biome; COLUMN_SAMPLES]; COLUMN_SAMPLES],
+            temperatures: [[0.0; COLUMN_SAMPLES]; COLUMN_SAMPLES],
             geology: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             rivers: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             min_height: f32::INFINITY,
@@ -78,6 +81,7 @@ impl ColumnData {
                 let sample = world.sample(world_x, world_z);
                 column.heights[iz][ix] = sample.height;
                 column.biomes[iz][ix] = world.biome_at(&sample);
+                column.temperatures[iz][ix] = sample.temperature;
                 column.rivers.push(sample.river);
                 samples.push(sample);
             }
