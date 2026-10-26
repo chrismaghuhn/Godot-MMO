@@ -142,7 +142,7 @@ fn xray(
             continue;
         }
         let (world, underground, edits) = (Arc::clone(&world.0), Arc::clone(&underground.0), Arc::clone(&edits.0));
-        let column = columns.streamer.column(position.xz()).cloned();
+        let column = columns.column(position.xz()).cloned();
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let column = column.unwrap_or_else(|| Arc::new(ColumnData::sample(&world, position.x, position.z)));
             let mut chunk = underground.materials_chunk(&world, &column, position.y);

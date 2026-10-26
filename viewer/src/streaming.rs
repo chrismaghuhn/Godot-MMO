@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use terraforge_core::{
     streaming::{Config, Event, FarKey, Stats, Streamer},
     vegetation::{TreePlacement, TreeStyle},
-    volume,
+    volume::{self, ColumnData},
 };
 
 use crate::meshes::chunk_mesh_to_bevy;
@@ -53,7 +53,7 @@ pub struct ChunkAssets {
 /// `TERRAFORGE_CULL=0` (ohne Cave Culling), `TERRAFORGE_FAR=0` (ohne Fernterrain).
 #[derive(Resource)]
 pub struct StreamerRes {
-    pub streamer: Streamer<Mesh>,
+    streamer: Streamer<Mesh>,
     culling: bool,
 }
 
@@ -102,6 +102,16 @@ fn create_streamer(
 impl StreamerRes {
     pub fn stats(&self) -> Stats {
         self.streamer.stats()
+    }
+
+    /// Höhen und Biome einer geladenen Spalte.
+    pub fn column(&self, position: IVec2) -> Option<&Arc<ColumnData>> {
+        self.streamer.column(position)
+    }
+
+    /// Markiert veränderte Chunks (Graben/Bauen) zum Neubau.
+    pub fn mark_changed(&mut self, chunks: impl IntoIterator<Item = IVec3>) {
+        self.streamer.mark_changed(chunks);
     }
 }
 

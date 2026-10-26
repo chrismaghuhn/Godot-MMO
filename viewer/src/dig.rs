@@ -77,7 +77,6 @@ impl VoxelCache {
                 self.0.clear();
             }
             let column = columns
-                .streamer
                 .column(owner.xz())
                 .cloned()
                 .unwrap_or_else(|| Arc::new(ColumnData::sample(&world.0, owner.x, owner.z)));
@@ -217,7 +216,7 @@ fn dig_input(
     };
 
     xray_dirty.0.extend(affected.iter().copied());
-    columns.streamer.mark_changed(affected.iter().copied());
+    columns.mark_changed(affected.iter().copied());
 }
 
 /// Reichweite fürs Fällen.
