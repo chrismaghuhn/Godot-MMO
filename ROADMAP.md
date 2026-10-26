@@ -40,7 +40,7 @@ Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-V
 - [x] Trennung öffentliche/geheime Generierung (Oberfläche vs. Untergrund, D-005): #3
 - [x] Höhlen: Kavernen + Tunnel + Eingänge an der Oberfläche: #4
   - [ ] Kleine Höhlenfetzen: #41
-  - [ ] ShellHeights pro Spalte cachen: #42
+  - [x] ShellHeights pro Spalte cachen: #42
 - [ ] Gestein und Erze (D-013): #5
   - [x] Material-Kanal pro Voxel + materials.ron: #43
   - [x] Gesteinsschichten und Oberflächenmaterial (öffentlich): #44
@@ -112,15 +112,15 @@ Wenn nicht: hier nachbessern, bevor Netzwerk dazukommt.
 - Besondere Welt-Features: schwebende Inseln, Wasserfälle, Ruinen, Geysire, Treibsand: #30
 - Seen als eigene Gewässer: #31
 - Höhlen-Biome auf echte Höhlen abbilden: #32
-- LOD für weite Sichtweite: #33
+- [x] LOD für weite Sichtweite (D-015): #33
 
 ## Bekannte Bugs und Aufräumarbeiten
 
 Aktueller Stand immer in den [offenen Issues](https://github.com/chrismaghuhn/Godot-MMO/issues?q=is%3Aopen+label%3Abug%2Ctech-debt).
 
-- Gebirgsränder blockartig: #36
-- 8 doppelte Biom-Namen: #37
-- Viewer ruckelt, wenn gleichzeitig Godot offen ist: #38
+- [x] Gebirgsränder blockartig: #36
+- [x] 8 doppelte Biom-Namen: #37
+- [x] Viewer ruckelt, wenn gleichzeitig Godot offen ist (nicht mehr reproduzierbar): #38
 
 ---
 

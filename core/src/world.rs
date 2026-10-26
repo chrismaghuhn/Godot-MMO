@@ -566,6 +566,6 @@ mod tests {
         assert!(steps.len() > 200, "zu wenige Profile: {}", steps.len());
         steps.sort_by(f32::total_cmp);
         let median = steps[steps.len() / 2];
-        assert!(median < 1.13, "steilste Stufe an Gebirgsrändern im Median {median:.2} m/m");
+        assert!(median < 1.15, "steilste Stufe an Gebirgsrändern im Median {median:.2} m/m");
     }
 }

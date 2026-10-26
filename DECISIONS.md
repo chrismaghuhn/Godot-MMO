@@ -356,3 +356,28 @@ Land: < 5° ~16 % → ~33 %, steiler als 30° ~28 % → ~15 % (ergänzt D-007).
 
 **Folgen:** Die ganze Welt hat sich verschoben (Spawn, Karten, Biom-Verteilung). Das Gefühl
 großer Regionen braucht weite Sicht; dafür wird LOD (#33) wichtiger.
+
+## D-015: Fernterrain (LOD) und weichere Gebirgsränder
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Seit D-014 sind Regionen 4-8 km groß, die Sicht endete aber nach ~250 m im Nebel (#33).
+Außerdem stiegen Gebirge blockartig aus der Ebene auf (#36).
+
+**Entscheidung (#33):**
+- Fernterrain aus der öffentlichen Höhenkarte (`core/src/lod.rs`), Höhlen spielen in der Ferne keine
+  Rolle. Zwei Stufen: 256-m-Kacheln mit 4-m-Raster bis ~1,5 km, 1024-m-Kacheln mit 16-m-Raster bis
+  ~3,5 km. Schürzen an Kanten verdecken Risse zwischen den Auflösungen.
+- Nahzone wird ausgespart, aber nur über vollständig geladenen Spalten; sonst liegt das Fernterrain
+  leicht tiefer unter der Nahzone. So sieht man nie durch den Boden (Start, Teleport, schneller Flug).
+  Aussparung mit Hysterese, Austausch von Kacheln erst, wenn der Ersatz fertig ist.
+- Sichtradius der Nahzone höchstens 30 Chunks; Nebel endet vor der garantierten Reichweite (3072 m).
+- Fernterrain hat noch keine Bäume (Folge-Issue).
+
+**Entscheidung (#36):** Kamm-Maske setzt früher und weicher ein, dazu 30 m Vorgebirge, das Küste und
+Schelf nicht anhebt.
+
+**Zielkonflikt:** Weiche Ränder entstehen vor allem durch angehobenes Umland. Landanteil bleibt gleich
+(Seed 42: 62,4 % → 62,9 %), aber mehr Land liegt über der Flussgrenze: Flussfläche ≈ -20 %,
+Land über Meer + 55 m 25 % → 38 %, Biom "Berge" 13,5 % → 19 %, flaches Land 28 % → 24 %
+(ergänzt D-007/D-014). Flüsse bis Meer + 75 m wurden getestet, machten die Täler aber wieder steil.

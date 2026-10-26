@@ -9,7 +9,8 @@
 //! werden. Übernommen wird eine Aussparung erst, wenn **alle Spalten darin geladen sind**; sonst
 //! bleibt die alte (falls noch vollständig geladen) oder es gibt keine. Ohne Aussparung liegt
 //! das Fernterrain etwas tiefer unter der Nahzone, man sieht also nie durch den Boden – auch
-//! nicht beim Start, beim Teleport oder wenn die Spalten beim schnellen Flug nachhängen.
+//! nicht beim Start, beim Teleport oder wenn die Spalten beim schnellen Flug nachhängen. Eine
+//! alte Aussparung wird aufgegeben, bevor die Spalten darunter entfernt werden.
 //!
 //! **Austausch:** Eine nicht mehr gewünschte Kachel verschwindet erst, wenn alle gewünschten
 //! Kacheln über ihrer Fläche fertig sind (keine Lücken, kaum Überlappung).
@@ -198,7 +199,13 @@ pub(super) fn stream_far(
     let loaded = |snap: IVec2, inner: i32| hole_chunks(snap, inner).all(|c| columns.0.contains_key(&c));
     state.hole = match hole_inner(world.0.cfg.view_radius) {
         Some(inner) if loaded(snap, inner) => Some((snap, hole_rect(snap, inner))),
-        Some(inner) => state.hole.filter(|(old, _)| loaded(*old, inner)),
+        // Alte Aussparung nur behalten, solange die Kamera nah genug ist: Spalten werden erst ab
+        // `view_radius + 2` entfernt, die alte Aussparung reicht bei ≤ HOLE_SLACK + 1 Abstand
+        // höchstens bis `view_radius`. So bleiben 2 Chunks Zeit für den Neubau der Randkacheln,
+        // bevor dahinter Spalten verschwinden (Review-Fund: sonst kurz ein Loch hinter der Kamera).
+        Some(inner) => state
+            .hole
+            .filter(|(old, _)| (center - *old).abs().max_element() <= HOLE_SLACK + 1 && loaded(*old, inner)),
         None => None,
     };
     let wanted = wanted_tiles(position, state.hole.map(|(_, rect)| rect));
@@ -306,7 +313,9 @@ mod tests {
     use super::*;
 
     /// Die Aussparung liegt für jede Kameraposition innerhalb der geladenen Spalten
-    /// (Chebyshev-Radius `view_radius` um den Kamera-Chunk), auch mit Hysterese.
+    /// (Chebyshev-Radius `view_radius` um den Kamera-Chunk), auch mit Hysterese. Eine noch
+    /// behaltene alte Aussparung (Abstand ≤ HOLE_SLACK + 1) reicht höchstens bis `view_radius`,
+    /// also vor die Entfernungsgrenze der Spalten (`view_radius + 2`).
     #[test]
     fn hole_stays_inside_loaded_columns() {
         for view_radius in 0..=MAX_VIEW_RADIUS {
@@ -322,6 +331,14 @@ mod tests {
                 snap = Some(s);
                 for chunk in hole_chunks(s, inner) {
                     assert!((chunk - center).abs().max_element() < view_radius, "Radius {view_radius}: {chunk} außerhalb um {center}");
+                }
+                // Behaltene alte Aussparung: Mittelpunkt höchstens HOLE_SLACK + 1 von der Kamera.
+                let slack = HOLE_SLACK + 1;
+                for old in [IVec2::new(slack, slack), IVec2::new(-slack, slack), IVec2::new(slack, -slack), IVec2::new(-slack, -slack)] {
+                    for chunk in hole_chunks(center + old, inner) {
+                        // Spalten werden erst ab view_radius + 2 entfernt.
+                        assert!((chunk - center).abs().max_element() <= view_radius, "alte Aussparung reicht zu weit");
+                    }
                 }
             }
         }
