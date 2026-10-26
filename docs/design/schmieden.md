@@ -131,7 +131,7 @@ Die Klinge braucht keine Modelle oder Texturen: Das Schwert **ist** seine Daten.
 | Griff, Parierstange, Knauf | Parametrisch (Lathe/Extrude), Wicklung als Shader-Muster |
 | Abnutzung | Scharten, Rost als Werte pro Segment |
 
-Übertragen und gespeichert wird nur das Datenmodell (≈ 1,8 KB für ein Langschwert), nicht das Mesh.
+Übertragen und gespeichert wird nur das Datenmodell (≈ 2 KB für ein fertiges Langschwert), nicht das Mesh.
 Aus der Ferne reicht eine einfache Form mit Grundfarbe (LOD), Muster-Shader nur in der Nähe.
 Stil eher klar und leicht stilisiert (deutliche Fasen, kräftige Muster), damit es nicht
 "technisch" wirkt.
@@ -164,5 +164,5 @@ Stil eher klar und leicht stilisiert (deutliche Fasen, kräftige Muster), damit 
 
 ## Offen
 
-- Wertebereiche, Formeln und Log-Format (Details in [schmieden-datenmodell.md](schmieden-datenmodell.md))
-- Wie die geplante Grundform eingegeben wird (Skizze, Vorlagen, Schablonen)
+- Formeln (entstehen im Prototyp) und Log-Encoding (#25), Details in
+  [schmieden-datenmodell.md](schmieden-datenmodell.md)

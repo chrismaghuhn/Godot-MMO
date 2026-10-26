@@ -406,6 +406,10 @@ Punkte von oben:
   autoritativ und schickt nach jeder Hitze den Zustand; Bitgleichheit braucht nur das
   Nachspielen auf dem Server.
 - Ein Langschwert ist ≈ 1,8 KB statt "wenige hundert Bytes".
+- Nachtrag: Zwei Darstellungen. Arbeitszustand in feinem `i32` (≈ 6 KB pro Langschwert,
+  Snapshot pro Hitze), Fertigzustand grob (≈ 2 KB), gerundet wird genau einmal beim
+  Fertigstellen. Sonst hätten leichte Schläge keine Wirkung und die Volumenerhaltung würde
+  driften. Pro Segment wird das Volumen gespeichert, die Länge daraus abgeleitet.
 - Werkstücke speichern eine Formel-Version, fertige Stücke frieren ihre Werte ein.
 - Volles Aktions-Log nur während der Arbeit, danach Snapshots pro Hitze.
 

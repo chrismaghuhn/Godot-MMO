@@ -78,6 +78,8 @@ Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 - [ ] Werkzeuge mit Wirkung (Abbaugeschwindigkeit, erreichbare Härte): #21
 - [ ] Crafting-UI: #22
 - [ ] Prozedurale Item-Optik abhängig vom Material: #23
+- [ ] Schmiede-Simulation als Prototyp in `core/` (Aktions-Enum, Hammerschlag, Wärme, Remeshing,
+  Abschrecken, Golden-File-Test), Design in [docs/design/schmieden-datenmodell.md](docs/design/schmieden-datenmodell.md) (D-015)
 
 **Entscheidungspunkt:** Macht der Kreislauf Sammeln → Craften → Verbessern allein Spaß?
 Wenn nicht: hier nachbessern, bevor Netzwerk dazukommt.
