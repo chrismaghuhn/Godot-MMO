@@ -124,6 +124,17 @@ großer Umbau.
   (`cargo build -p <client-crate> --release`), nie zusammen mit Viewer oder Server
   (`--workspace`). Sonst wäre der Untergrund im Client enthalten.
 
+**Höhlen und Schutz-Schale (#4, 2026-10-26):**
+- Höhlen dürfen die sichtbare Oberfläche nicht verändern (außer an Eingängen), sonst verrät
+  die Oberfläche flache Höhlen. Regel: Luft wird nie verändert, und Samples weniger als 4 m
+  unter der **niedrigsten Oberfläche der 3×3-Nachbarspalten** bleiben bitgenau gleich.
+  Begründung: Ein Surface-Nets-Vertex hängt nur von den 8 Ecken seiner Zelle ab; so kann
+  keine Zelle, die Luft berührt, verändert werden.
+- Erste Version maß die Tiefe nur senkrecht. Das unabhängige Review (D-012) fand, dass dann
+  an Steilhängen Oberflächen-Zellen verändert werden (8.462 Zellen in einer großen Stichprobe).
+  Nach der Korrektur: 0 von 31,9 Mio. geprüften Zellen.
+- Eingänge nur an Land (Oberfläche ≥ Meeresspiegel + 3 m), keine Höhlen unter y = -160.
+
 ## D-006: Rendering-Strategie, nur zeichnen was sichtbar ist
 - Datum: 2026-10-26
 - Status: angenommen
@@ -230,3 +241,25 @@ Große Dateien machen Änderungen unübersichtlich und Konflikte wahrscheinliche
 `overlay`, `devtools` (größte Datei 281 Zeilen); Vegetation in `placement`, `geometry`,
 `primitives`, `rng` (größte Datei 364 Zeilen). Baumplanung und Baum-Geometrie sind
 nachweislich unverändert (gleicher Hash über 3028 Bäume und alle Baum-Meshes).
+
+## D-012: Unabhängiges Review vor Abschluss größerer Features
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Bei #4 (Höhlen) waren alle eigenen Tests grün, trotzdem enthielt die erste Version
+einen Sicherheitsfehler (D-005: Oberfläche verriet Höhlen an Steilhängen). Die Tests prüften
+die eigene Annahme, nicht die eigentliche Eigenschaft.
+
+**Entscheidung:**
+- Größere Features werden vor dem Schließen des Issues von einem **separaten Reviewer** (eigener
+  Agent ohne den Kontext der Umsetzung) geprüft. Das Review ist nur lesend und bekommt
+  Ziel, Anforderungen und Diff.
+- Jeder Fund wird mit einem Test abgesichert, und es wird geprüft, dass dieser Test **ohne**
+  die Korrektur fehlschlägt (Fehler als Mutation wieder einbauen).
+- Nach den Korrekturen prüft der Reviewer nach.
+- Tests sollen die eigentliche Eigenschaft prüfen (z. B. "keine Oberflächen-Zelle ändert sich"),
+  nicht die Umsetzungsregel (z. B. "Samples mit Tiefe < 4 m ändern sich nicht").
+
+**Folgen:** Mehr Aufwand pro Feature, dafür werden Fehler gefunden, bevor andere Teile darauf
+aufbauen. Ergebnisse des Reviews werden im Issue und, wenn sie Entscheidungen betreffen, hier
+festgehalten.

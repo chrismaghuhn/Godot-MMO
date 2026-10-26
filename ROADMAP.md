@@ -38,7 +38,7 @@ Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-V
 - [x] Dichtefeld + 3D-Chunks (32³), leere Chunks überspringen: #1
 - [x] Mesh-Erzeugung mit Surface Nets: #2
 - [x] Trennung öffentliche/geheime Generierung (Oberfläche vs. Untergrund, D-005): #3
-- [ ] Höhlen: Kavernen + Tunnel + Eingänge an der Oberfläche: #4
+- [x] Höhlen: Kavernen + Tunnel + Eingänge an der Oberfläche: #4
 - [ ] Gestein pro Voxel: Schichten und Erzadern: #5
 - [ ] Graben/Bauen: Änderungen pro Chunk speichern, Chunk neu vermaschen: #6
 - [ ] Bäume auf die Volumen-Oberfläche setzen: #7
