@@ -330,3 +330,25 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [u8; 3] {
         (b * 255.0).round().clamp(0.0, 255.0) as u8,
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// #37: Biom-Namen sind über alle Familien eindeutig (Anzeige, spätere Daten je Variante).
+    #[test]
+    fn variant_names_are_unique() {
+        let registry = BiomeRegistry::load();
+        let mut seen = std::collections::HashMap::new();
+        let mut total = 0;
+        for family in registry.families() {
+            for variant in &family.variants {
+                total += 1;
+                if let Some(other) = seen.insert(variant.name.clone(), family.kind) {
+                    panic!("{} doppelt: {:?} und {:?}", variant.name, other, family.kind);
+                }
+            }
+        }
+        assert_eq!(total, 352, "Anzahl der Biome hat sich geändert");
+    }
+}
