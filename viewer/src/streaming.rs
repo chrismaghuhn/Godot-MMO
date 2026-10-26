@@ -199,7 +199,7 @@ fn stream_chunks(
             let meshes = column
                 .surface_chunks()
                 .filter_map(|chunk_y| {
-                    let density = underground.density_chunk(&column, chunk_y)?;
+                    let density = underground.density_chunk(&world, &column, chunk_y)?;
                     let mesh = ChunkMesh::build(&world, &column, &density);
                     (!mesh.is_empty()).then(|| (chunk_y, chunk_mesh_to_bevy(mesh)))
                 })

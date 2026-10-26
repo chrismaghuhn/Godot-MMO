@@ -9,14 +9,14 @@
 //! Weil Interpolation nie unter den kleinsten Gitterwert fällt, ist `CaveGrid::may_have_caves`
 //! eine sichere Prüfung, ob ein Chunk überhaupt Höhlen enthalten kann.
 //!
-//! **Schutz-Schale (D-005):** Luft wird nie verändert, und in den obersten `SURFACE_SHELL`
-//! Metern unter dem Boden bleibt die Dichte bitgenau gleich, außer an Eingängen. Sonst
-//! würde die sichtbare Oberfläche je nach geheimem Seed minimal anders aussehen und
-//! flache Höhlen verraten.
+//! **Schutz-Schale (D-005):** Luft wird nie verändert, und Samples, die weniger als
+//! `SURFACE_SHELL` Meter unter der niedrigsten Oberfläche ihrer 3×3-Nachbarschaft liegen,
+//! bleiben bitgenau gleich, außer an Eingängen. Damit ist jede Zelle, die Luft berührt,
+//! unverändert, und die sichtbare Oberfläche verrät keine Höhlen (siehe `ShellHeights`).
 
 use crate::noise::Layer;
 use crate::volume::{CHUNK_SIZE, ColumnData, DensityChunk, SAMPLE_MIN};
-use crate::world::smoothstep;
+use crate::world::{WorldGen, smoothstep};
 
 use super::SecretSeed;
 
@@ -143,7 +143,10 @@ impl CaveGrid {
         let (iy, ty) = cell(y);
         let (iz, tz) = cell(z);
         let at = |dx: usize, dy: usize, dz: usize| self.values[((iz + dz) * n + iy + dy) * n + ix + dx];
-        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        // Gewichtete Form statt `a + (b - a) * t`: exakt `a` bei t = 0 und `b` bei t = 1, damit
+        // benachbarte Chunks an gemeinsamen Samples bitgleich rechnen. Mit Gewichten >= 0 bleibt
+        // das Ergebnis > 0, wenn beide Werte > 0 sind (Voraussetzung für `may_have_caves`).
+        let lerp = |a: f32, b: f32, t: f32| a * (1.0 - t) + b * t;
         let x00 = lerp(at(0, 0, 0), at(1, 0, 0), tx);
         let x10 = lerp(at(0, 1, 0), at(1, 1, 0), tx);
         let x01 = lerp(at(0, 0, 1), at(1, 0, 1), tx);
@@ -152,11 +155,60 @@ impl CaveGrid {
     }
 }
 
+/// Für jede Sample-Spalte (lokal `-1..=CHUNK_SIZE`) die niedrigste Oberfläche in der
+/// 3×3-Nachbarschaft.
+///
+/// Ein Surface-Nets-Vertex hängt nur von den 8 Ecken seiner Zelle ab. Liegt ein Sample
+/// mindestens `SURFACE_SHELL` (> 1 m) unter der niedrigsten Oberfläche aller Nachbarspalten,
+/// kann keine Zelle, zu der es gehört, Luft enthalten. Senkrechte Tiefe allein reicht nicht:
+/// An Steilhängen wäre ein Sample "tief", aber seitlich direkt an der Luft.
+pub(super) struct ShellHeights {
+    values: Vec<f32>,
+}
+
+/// Spalten pro Achse in `ShellHeights`: lokal `-1..=CHUNK_SIZE`.
+const SHELL_COLUMNS: usize = (CHUNK_SIZE - SAMPLE_MIN + 1) as usize;
+
+impl ShellHeights {
+    pub(super) fn new(world: &WorldGen, column: &ColumnData) -> Self {
+        // Höhen für lokal -2..=CHUNK_SIZE+1. Die Spalte deckt -1..=CHUNK_SIZE+1 ab, die
+        // Randreihe -2 kommt aus der Welt (gleiche Funktion, also gleiche Werte).
+        let origin_x = column.chunk_x * CHUNK_SIZE;
+        let origin_z = column.chunk_z * CHUNK_SIZE;
+        let height = |x: i32, z: i32| {
+            if x >= SAMPLE_MIN && z >= SAMPLE_MIN {
+                column.height(x, z)
+            } else {
+                world.column_height((origin_x + x) as f32, (origin_z + z) as f32)
+            }
+        };
+        let mut values = Vec::with_capacity(SHELL_COLUMNS * SHELL_COLUMNS);
+        for z in SAMPLE_MIN..=CHUNK_SIZE {
+            for x in SAMPLE_MIN..=CHUNK_SIZE {
+                let mut lowest = f32::INFINITY;
+                for dz in -1..=1 {
+                    for dx in -1..=1 {
+                        lowest = lowest.min(height(x + dx, z + dz));
+                    }
+                }
+                values.push(lowest);
+            }
+        }
+        Self { values }
+    }
+
+    #[inline]
+    fn lowest(&self, x: i32, z: i32) -> f32 {
+        self.values[(z - SAMPLE_MIN) as usize * SHELL_COLUMNS + (x - SAMPLE_MIN) as usize]
+    }
+}
+
 /// Schneidet die Höhlen in ein Dichtefeld. Gibt zurück, ob dabei Luft entstanden ist.
 pub(super) fn carve(
     noise: &CaveNoise,
     grid: &CaveGrid,
     column: &ColumnData,
+    shell: &ShellHeights,
     chunk: &mut DensityChunk,
     sea_level: f32,
 ) -> bool {
@@ -164,11 +216,11 @@ pub(super) fn carve(
     let mut carved_air = false;
     for z in SAMPLE_MIN..=CHUNK_SIZE {
         for x in SAMPLE_MIN..=CHUNK_SIZE {
-            let height = column.height(x, z);
+            let lowest_surface = shell.lowest(x, z);
             let entrance = noise.entrance(
                 (origin.x + x) as f32,
                 (origin.z + z) as f32,
-                height,
+                column.height(x, z),
                 sea_level,
             );
             for y in SAMPLE_MIN..=CHUNK_SIZE {
@@ -177,7 +229,7 @@ pub(super) fn carve(
                 if surface <= 0.0 {
                     continue;
                 }
-                let depth = height - (origin.y + y) as f32;
+                let depth = lowest_surface - (origin.y + y) as f32;
                 let allowed = smoothstep(SURFACE_SHELL, SURFACE_SHELL + SHELL_FADE, depth).max(entrance);
                 // Schutz-Schale: bitgenau unverändert.
                 if allowed <= 0.0 {
@@ -239,6 +291,31 @@ mod tests {
         }
         eprintln!("höhlenfreie Chunks laut Gitter: {checked}/{total}");
         assert!(checked > 0, "kein höhlenfreier Chunk gefunden");
+    }
+
+    /// `ShellHeights` direkt gegen eine Brute-Force-Rechnung prüfen. Unabhängig davon, ob das
+    /// Gelände zufällig einen kritischen Steilhang enthält (das Review fand, dass eine
+    /// einseitige Nachbarschaft sonst unbemerkt bliebe).
+    #[test]
+    fn shell_heights_match_brute_force_neighbourhood_minimum() {
+        let world = WorldGen::new(42);
+        for (chunk_x, chunk_z) in [(0, 0), (0, -40), (-7, 13), (25, -3)] {
+            let column = ColumnData::sample(&world, chunk_x, chunk_z);
+            let shell = ShellHeights::new(&world, &column);
+            for z in SAMPLE_MIN..=CHUNK_SIZE {
+                for x in SAMPLE_MIN..=CHUNK_SIZE {
+                    let mut expected = f32::INFINITY;
+                    for dz in -1..=1 {
+                        for dx in -1..=1 {
+                            let world_x = (chunk_x * CHUNK_SIZE + x + dx) as f32;
+                            let world_z = (chunk_z * CHUNK_SIZE + z + dz) as f32;
+                            expected = expected.min(world.column_height(world_x, world_z));
+                        }
+                    }
+                    assert_eq!(shell.lowest(x, z).to_bits(), expected.to_bits(), "Spalte {chunk_x},{chunk_z}, lokal {x},{z}");
+                }
+            }
+        }
     }
 
     #[test]
