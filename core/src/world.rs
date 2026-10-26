@@ -110,7 +110,7 @@ impl WorldGen {
             0.72,
             raw.volcanic * 0.55 + mountain * 0.35 + raw.realm * 0.08,
         );
-        let crystal = smoothstep(0.45, 0.75, raw.crystal * 0.60 + raw.realm * 0.08);
+        let crystal = smoothstep(0.45, 0.80, raw.crystal + raw.realm * 0.08);
         let fungal = smoothstep(
             0.38,
             0.70,
@@ -260,4 +260,38 @@ fn slot(t: f32, count: usize) -> usize {
 pub fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Landproben auf einem groben Raster (Seed 42).
+    fn land_samples(world: &WorldGen, area: f32, steps: usize) -> Vec<(f32, f32, ColumnSample)> {
+        let mut samples = Vec::new();
+        for j in 0..steps {
+            for i in 0..steps {
+                let x = (i as f32 / steps as f32 - 0.5) * area;
+                let z = (j as f32 / steps as f32 - 0.5) * area;
+                let sample = world.sample(x, z);
+                if sample.height >= world.cfg.sea_level {
+                    samples.push((x, z, sample));
+                }
+            }
+        }
+        samples
+    }
+
+    #[test]
+    fn crystal_biomes_exist_but_stay_rare() {
+        // #49: Vorher lag der Kristallwert nie über 0.4, die Familie kam nie vor.
+        let world = WorldGen::new(42);
+        let land = land_samples(&world, 20_000.0, 160);
+        let crystal = land
+            .iter()
+            .filter(|(_, _, sample)| world.biome_at(sample).kind == FamilyKind::Crystal)
+            .count();
+        let share = crystal as f64 / land.len() as f64;
+        assert!((0.005..0.05).contains(&share), "Kristall-Anteil {share:.4}");
+    }
 }
