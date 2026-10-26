@@ -194,3 +194,27 @@ Erst dann Multiplayer mit wenigen Spielern, erst danach MMO-Skalierung. Der Serv
 Anfang an mitgedacht (Logik in `core/`, D-003).
 
 **Folgen:** Nach Phase 4 gibt es einen bewussten Entscheidungspunkt.
+
+## D-011: Code-Struktur, ein Modul pro Thema
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** `viewer/src/main.rs` (813 Zeilen) und `core/src/vegetation.rs` (853 Zeilen) waren
+gewachsen und mischten mehrere Themen (Streaming, Kamera, Overlay, … bzw. Platzierung und Geometrie).
+Große Dateien machen Änderungen unübersichtlich und Konflikte wahrscheinlicher.
+
+**Entscheidung:**
+- Ein Modul pro Thema. Wird ein Thema größer, wird es ein Ordner mit `mod.rs` und Untermodulen
+  (Beispiel: `core/src/vegetation/`).
+- Richtwert: **~400 Zeilen pro Datei**. Kein hartes Limit, aber ab da wird geprüft, ob sich
+  ein Thema abspalten lässt.
+- Jede Datei beginnt mit einem `//!`-Kommentar, der sagt, wofür sie zuständig ist.
+- Im Viewer ist jedes Thema ein eigenes Bevy-Plugin; `main.rs` steckt nur die Plugins zusammen.
+- Sichtbarkeit so eng wie möglich (`pub(super)` für interne Bausteine, Methoden statt öffentlicher Felder).
+- Umbauten ohne Verhaltensänderung bekommen einen eigenen Commit und werden geprüft
+  (bei deterministischem Code: Ausgabe-Hash vorher/nachher vergleichen).
+
+**Folgen:** Aufteilung am 2026-10-26: Viewer in `scene`, `streaming`, `meshes`, `controls`,
+`overlay`, `devtools` (größte Datei 281 Zeilen); Vegetation in `placement`, `geometry`,
+`primitives`, `rng` (größte Datei 364 Zeilen). Baumplanung und Baum-Geometrie sind
+nachweislich unverändert (gleicher Hash über 3028 Bäume und alle Baum-Meshes).
