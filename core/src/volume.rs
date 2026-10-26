@@ -272,6 +272,16 @@ impl DensityChunk {
         self.materials[index] = material;
     }
 
+    /// Setzt Dichte und Material eines Samples gemeinsam (Spieler-Änderungen, #6). Hält die
+    /// Invariante ein: Dichte <= 0 ⇔ Luft.
+    #[inline]
+    pub(crate) fn set_voxel(&mut self, x: i32, y: i32, z: i32, density: f32, material: MaterialId) {
+        let index = sample_index(x, y, z);
+        debug_assert!(density <= 0.0 || !material.is_air(), "festes Sample ohne Material ({x},{y},{z})");
+        self.values[index] = density;
+        self.materials[index] = if density <= 0.0 { MaterialId::AIR } else { material };
+    }
+
     /// Weltposition der lokalen Koordinate (0, 0, 0).
     pub fn origin(&self) -> IVec3 {
         self.position * CHUNK_SIZE
