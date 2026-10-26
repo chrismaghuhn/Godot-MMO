@@ -35,8 +35,8 @@ server/   (geplant)         Rust, headless, autoritativ
 
 Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-Viewer.
 
-- [ ] Dichtefeld + 3D-Chunks (32³), leere Chunks überspringen: #1
-- [ ] Mesh-Erzeugung mit Surface Nets: #2
+- [x] Dichtefeld + 3D-Chunks (32³), leere Chunks überspringen: #1
+- [x] Mesh-Erzeugung mit Surface Nets: #2
 - [ ] Trennung öffentliche/geheime Generierung (Oberfläche vs. Untergrund, D-005): #3
 - [ ] Höhlen: Kavernen + Tunnel + Eingänge an der Oberfläche: #4
 - [ ] Gestein pro Voxel: Schichten und Erzadern: #5
