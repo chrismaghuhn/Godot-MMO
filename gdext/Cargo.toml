@@ -1,0 +1,29 @@
+# Eigener Workspace (nicht im Haupt-Workspace): Cargo vereinigt die Features aller Crates eines
+# Befehls. Läge der Client mit Viewer/Server zusammen, käme über `--workspace` der geheime
+# Untergrund hinein (D-005). Bauen: `cargo build --manifest-path gdext/Cargo.toml`.
+[workspace]
+resolver = "3"
+
+[package]
+name = "terraforge-gdext"
+description = "Godot-Anbindung (gdext) fuer terraforge-core, ohne geheimen Untergrund (D-005)"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+# cdylib für Godot. Mit rlib baut `cargo test` die cdylib mit, die der Smoke-Test lädt
+# (nur cdylib: dann baut `cargo test` sie nicht).
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Ohne Feature `underground`: Der Spiel-Client darf den geheimen Untergrund nicht enthalten (D-005).
+terraforge-core = { path = "../core" }
+# API genau auf die Godot-Version des Clients (4.7, `client/project.godot`) festgelegt.
+godot = { version = "0.5.5", features = ["api-4-7"] }
+
+# Wie im Haupt-Workspace: eigener Code schnell gebaut, Abhängigkeiten optimiert.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

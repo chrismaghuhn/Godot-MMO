@@ -19,6 +19,10 @@ pub mod vegetation;
 pub mod volume;
 pub mod world;
 
+/// Ob der geheime Untergrund mitkompiliert ist (Feature `underground`). Der Spiel-Client prüft
+/// damit, dass ihn keine Feature-Vereinigung von Cargo hineingezogen hat (D-005).
+pub const UNDERGROUND_COMPILED: bool = cfg!(feature = "underground");
+
 pub use biome::{FamilyKind, VariantTag};
 pub use material::{MaterialCategory, MaterialId, MaterialRegistry};
 pub use world::{BiomeRef, ColumnSample, WorldConfig, WorldGen, smoothstep};

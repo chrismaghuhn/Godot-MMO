@@ -13,9 +13,10 @@ verfolgt, gruppiert nach Milestones (= Phasen).
 ## Architektur
 
 ```
-core/     terraforge-core   Rust, engine-unabhängig: Weltgenerierung, später Items/Crafting
+core/     terraforge-core   Rust, engine-unabhängig: Weltgenerierung, Streaming, später Items/Crafting
 viewer/   terraforge-viewer Bevy, Debug-Tool für den Core (+ mapdump)
-client/   Godot 4           Spiel-Client, bindet den Core über gdext ein
+gdext/    terraforge-gdext  Rust, Godot-Anbindung des Cores (eigener Workspace, ohne Untergrund)
+client/   Godot 4           Spiel-Client, lädt gdext (Build: client/README.md)
 server/   (geplant)         Rust, headless, autoritativ
 ```
 
@@ -60,7 +61,7 @@ Plan und Begründung in D-021. Untergrund und Änderungen kommen schon hier von 
 Server-Prozess, damit der Client nie `underground` enthält (D-005).
 
 - [x] Streaming als engine-unabhängiger Chunk-Manager in den Core, Viewer darauf umstellen: #55
-- [ ] gdext-Crate, Godot lädt `terraforge-core`: #10
+- [x] gdext-Crate, Godot lädt `terraforge-core`: #10
 - [ ] Chunk-Mesh in Godot anzeigen, dann Streaming um die Kamera: #11
   - Fernterrain (D-015), Wasser-Shader, Debug-Overlay (Frametimes, Chunk-Zeiten)
 - [ ] Bäume über `MultiMeshInstance3D`: #12

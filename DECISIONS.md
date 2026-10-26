@@ -123,6 +123,12 @@ großer Umbau.
   gebaut werden. Ein Release-Build des Spiel-Clients muss deshalb einzeln laufen
   (`cargo build -p <client-crate> --release`), nie zusammen mit Viewer oder Server
   (`--workspace`). Sonst wäre der Untergrund im Client enthalten.
+- **Nachtrag (#10, 2026-10-26):** Der Godot-Client `gdext/` ist deshalb ein **eigener
+  Cargo-Workspace** (im Haupt-Workspace `exclude`), damit kann keine Feature-Vereinigung mehr
+  passieren. Zusätzlich exportiert der Core `UNDERGROUND_COMPILED`, und der Client bricht bei
+  `true` in jedem Build ab (auch Debug: Godot kann Debug-Builds ausliefern). Das Review fand,
+  dass eine reine Release-Prüfung über `debug-assertions` im Profil oder per Umgebungsvariable
+  umgangen werden kann.
 
 **Höhlen und Schutz-Schale (#4, 2026-10-26):**
 - Höhlen dürfen die sichtbare Oberfläche nicht verändern (außer an Eingängen), sonst verrät
@@ -624,3 +630,19 @@ Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
   Radius, Höhle, Graben, Röntgen, ohne Fernterrain/Culling) sind Entity für Entity gleich wie
   vorher. Benchmark (#9, 30 s Autopilot): Frames Ø 16,67 ms, p95 17,18 ms vorher wie nachher,
   Job-Zeiten gleich.
+
+**Umsetzung gdext-Crate (#10, 2026-10-26):**
+- godot-rust 0.5.5 mit `api-4-7`, genau passend zu Godot 4.7.2 (statt einer älteren API: Client
+  und Bibliothek werden zusammen versioniert).
+- `gdext/` als eigener Workspace (siehe D-005, Nachtrag). Build und erster Start in
+  `client/README.md`. Erste Klasse `TerraforgeWorld` (Höhe, Biom, Meeresspiegel); Seeds außerhalb
+  von `u32` ergeben `null` statt still eine andere Welt.
+- Smoke-Test `gdext/tests/godot_smoke.rs`: startet Godot headless mit einem temporären Projekt,
+  das genau die gerade gebaute Bibliothek lädt, und vergleicht mit dem Core. Geprüft, dass er
+  einen falschen Wert erkennt (Standard-Ordner, `--release`, anderer `CARGO_TARGET_DIR`).
+- Geprüft: Release- und Debug-Bibliothek enthalten keinen Untergrund-Code (Viewer zum Vergleich
+  120 Treffer); mit eingeschaltetem Feature bricht der Build ab.
+- Zwei Lockfiles (Haupt-Workspace und `gdext/`): `gdext/tests/lockfiles.rs` prüft, dass der
+  Client für alle Abhängigkeiten des Cores dieselben Versionen nutzt, sonst entstünden still
+  verschiedene Welten (Review-Fund).
+- Bekannt: Der erste Import mit Extension stürzt beim Beenden ab (#57), danach läuft alles.

@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["core", "viewer"]
+# Eigener Workspace, damit Cargo den Untergrund nie per Feature-Vereinigung in den Client
+# zieht (D-005, #10).
+exclude = ["gdext"]
 default-members = ["viewer"]
 
 [workspace.package]
