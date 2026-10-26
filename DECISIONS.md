@@ -381,3 +381,28 @@ Schelf nicht anhebt.
 (Seed 42: 62,4 % → 62,9 %), aber mehr Land liegt über der Flussgrenze: Flussfläche ≈ -20 %,
 Land über Meer + 55 m 25 % → 38 %, Biom "Berge" 13,5 % → 19 %, flaches Land 28 % → 24 %
 (ergänzt D-007/D-014). Flüsse bis Meer + 75 m wurden getestet, machten die Täler aber wieder steil.
+
+## D-016: Graben und Bauen über Änderungen pro Voxel
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Spieler sollen frei graben und bauen (D-004, #6). Später kommen Werkzeuge mit
+Härte-Stufen (#21), Ausbeute fürs Inventar (#18), Speicherung (#19) und der Server (#25/#26).
+
+**Entscheidung:**
+- `core/src/edits.rs`: Änderungen werden pro **Welt-Voxel** gespeichert (Dichte + Material) und beim
+  Bauen eines Chunks auf alle Chunks angewendet, die den Voxel als Sample enthalten. So bleiben
+  Nähte nach Änderungen bitgenau.
+- Graben/Bauen als Kugel-Distanzfeld (`min`/`max`), glatte Formen. Graben hat eine Härte-Grenze
+  (Werkzeug) und liefert die Ausbeute pro Material (Voxel, die von fest zu Luft wurden ≈ m³).
+- Der Generator wird über eine Funktion (`source`) angebunden, das Modul ist öffentlich.
+- Viewer: Werkzeug-Stufen Schaufel 2,5 / Feuerstein 4,0 / Bronze 5,5 / Eisen 7,0 (Härte), Neubau
+  betroffener Chunks im Hintergrund, altes Mesh bleibt bis zum Ersatz.
+
+**Folgen und Hinweise:**
+- **Server (D-005):** Änderungen allein reichen einem Client mit nur öffentlichen Daten nicht
+  (Voxel in Höhlenluft oder zu hartem Gestein werden nicht gespeichert). Der Server muss für
+  geänderte Chunks die fertigen Voxeldaten senden.
+- Speicherung fehlt noch (#19), Bäume über Löchern schweben noch (#7).
+- Review-Funde: verlorene Neubauten bei belegten Job-Plätzen, lange Locks beim Graben, Invariante
+  im Speicher – behoben.

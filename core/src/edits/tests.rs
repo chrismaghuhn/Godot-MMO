@@ -284,8 +284,8 @@ fn repeated_edits_at_negative_coordinates() {
     assert!(total > 100 && total < 6 * 34, "Ausbeute {total} passt nicht zu überlappenden Kugeln");
 }
 
-/// Ein Chunk, dessen einzige Änderung im Besitzer-Chunk des Nachbarn liegt (seine Randlage),
-/// bekommt sie trotzdem.
+/// Eine Änderung, die dem Nachbar-Chunk gehört, aber in der Randlage (x = 32) dieses Chunks
+/// liegt, kommt auch hier an.
 #[test]
 fn apply_reaches_edits_owned_by_a_neighbour() {
     let world = WorldGen::new(42);

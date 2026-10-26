@@ -47,7 +47,7 @@ Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-V
   - [x] Provinzen, Erz-Vorkommen, Reinheit (geheim): #45
   - [ ] Sichtbarkeits-Filter (Erze erst zeigen, wenn sie freiliegen): #46
   - [ ] Viewer: Materialfarben, Röntgenmodus, Statistik: #47
-- [ ] Graben/Bauen: Änderungen pro Chunk speichern, Chunk neu vermaschen: #6
+- [x] Graben/Bauen: Änderungen pro Voxel, Chunk neu vermaschen (D-016): #6
 - [ ] Bäume auf die Volumen-Oberfläche setzen: #7
 - [ ] Cave Culling (Sichtbarkeit über Chunk-Verbindungen, D-006): #8
 - [ ] Performance-Messung als festes Werkzeug (Frametimes, Chunk-Zeiten): #9
