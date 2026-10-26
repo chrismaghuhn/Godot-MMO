@@ -69,7 +69,7 @@ Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 - [ ] Erste 30-40 Biome vollständig ausbauen (D-009): #17
 - [ ] Abbauen + einfaches Inventar: #18
 - [ ] Oberflächen-Hinweise auf Erze (vom Server gesteuert): #48
-- [ ] Große Regionen (4-8 km) für ein BOTW-Gefühl: #50
+- [x] Große Regionen (4-8 km) für ein BOTW-Gefühl (D-014): #50
 - [ ] Speichern von Weltänderungen (Delta auf den Seed): #19
 
 ## Phase 4: Crafting
