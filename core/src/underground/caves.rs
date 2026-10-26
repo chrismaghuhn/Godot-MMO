@@ -132,6 +132,14 @@ pub(super) struct ShellHeights {
 const SHELL_COLUMNS: usize = (CHUNK_SIZE - SAMPLE_MIN + 1) as usize;
 
 impl ShellHeights {
+    /// Wie `new`, aber pro Spalte nur einmal berechnet (#42). Kostete vorher ~110 µs pro Chunk,
+    /// vor allem durch 69 `world.sample` für die Randreihe -2. Setzt voraus, dass `world` die
+    /// Welt ist, aus der `column` stammt, und dass `column.heights` nicht verändert wurde.
+    pub(super) fn cached(world: &WorldGen, column: &ColumnData) -> Self {
+        let values = column.shell_cache.get_or_init(|| Self::new(world, column).values);
+        Self { values: values.clone() }
+    }
+
     pub(super) fn new(world: &WorldGen, column: &ColumnData) -> Self {
         // Höhen für lokal -2..=CHUNK_SIZE+1. Die Spalte deckt -1..=CHUNK_SIZE+1 ab, die
         // Randreihe -2 kommt aus der Welt (gleiche Funktion, also gleiche Werte).

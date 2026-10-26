@@ -42,6 +42,10 @@ pub struct ColumnData {
     rivers: Vec<f32>,
     /// Oberflächenfarbe (sRGB) mit weichem Übergang an Regionsgrenzen (#50).
     colors: Vec<[u8; 3]>,
+    /// Zwischenspeicher für Ableitungen aus den (öffentlichen) Höhen, die der Untergrund pro
+    /// Spalte nur einmal berechnen will (#42). Gilt nur, solange `heights` unverändert ist.
+    #[cfg_attr(not(feature = "underground"), allow(dead_code))]
+    pub(crate) shell_cache: std::sync::OnceLock<Vec<f32>>,
     min_height: f32,
     max_height: f32,
 }
@@ -66,6 +70,7 @@ impl ColumnData {
             geology: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             rivers: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             colors: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
+            shell_cache: std::sync::OnceLock::new(),
             min_height: f32::INFINITY,
             max_height: f32::NEG_INFINITY,
         };

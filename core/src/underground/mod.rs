@@ -120,7 +120,7 @@ impl Underground {
 
     /// Öffentliches Feld → Höhlen → Erze. Gibt zurück, ob Höhlen Luft geschaffen haben.
     fn build(&self, world: &WorldGen, column: &ColumnData, chunk_y: i32, grid: &CaveGrid) -> (DensityChunk, bool) {
-        let shell = ShellHeights::new(world, column);
+        let shell = ShellHeights::cached(world, column);
         let mut chunk = DensityChunk::from_column(column, chunk_y);
         let carved_air = caves::carve(&self.caves, grid, column, &shell, &mut chunk, self.sea_level);
         ores::apply_ores(&self.ores, &self.provinces, world, column, &shell, &mut chunk);
