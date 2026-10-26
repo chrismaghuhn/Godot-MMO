@@ -1,0 +1,45 @@
+[package]
+name = "terraforge"
+version = "0.1.0"
+edition = "2024"
+default-run = "terraforge"
+
+[dependencies]
+bevy = { version = "0.20", default-features = false, features = [
+    "std",
+    "multi_threaded",
+    "default_app",
+    "bevy_asset",
+    "bevy_log",
+    "bevy_winit",
+    "x11",
+    "wayland",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_camera",
+    "bevy_light",
+    "bevy_mesh",
+    "bevy_image",
+    "bevy_shader",
+    "bevy_material",
+    "bevy_color",
+    "bevy_window",
+    "bevy_camera_controller",
+    "free_camera",
+    "bevy_ui_render",
+    "default_font",
+    "png",
+    "tonemapping_luts",
+    "zstd_rust",
+] }
+fastnoise-lite = "1.1"
+serde = { version = "1", features = ["derive"] }
+ron = "0.12"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
