@@ -90,7 +90,10 @@ impl WorldGen {
         // Ebenen: hohe Erosion abseits der Berge glättet das Detail fast komplett.
         let plains = smoothstep(-0.10, 0.55, raw.erosion) * (1.0 - mountain);
         // Bergkämme nur in echten Bergregionen, statt linear über ~70% des Landes auszulaufen.
-        let ridge_mask = smoothstep(0.42, 0.90, mountain);
+        // Breiterer, weich einsetzender Übergang zu den Kämmen plus Vorgebirge (#36), damit Massive
+        // nicht abrupt aus der Ebene aufsteigen.
+        let ridge_mask = smoothstep(0.25, 1.00, mountain).powf(1.5);
+        let foothills = smoothstep(0.15, 0.70, mountain);
         // Hügel nur dort, wo das Gelände ohnehin rau ist, Berge bekommen am meisten.
         let hill_amp = (1.0 + 4.0 * rugged + 4.0 * ridge_mask) * (1.0 - 0.75 * plains);
 
@@ -102,6 +105,7 @@ impl WorldGen {
             + 14.0 * smoothstep(-0.17, 0.00, c)
             + 46.0 * smoothstep(0.00, 0.85, c);
         height += raw.ridge.powf(1.6) * 118.0 * ridge_mask;
+        height += 30.0 * foothills;
         height += raw.detail * hill_amp;
         height += continental * 5.0;
 
@@ -533,5 +537,33 @@ mod tests {
         // Breite der Übergangszone 1400 m: auf 2 m ändert sich ein Gewicht um deutlich < 0,02.
         // Vorher sprang es um bis zu 0,5.
         assert!(max_step < 0.02, "Sprung um {max_step} auf 2 m");
+    }
+
+    /// #36: Gebirgsränder nicht blockartig. Profile von Gipfeln nach außen; Median der steilsten
+    /// 15-m-Stufe. Vorher (harte Kamm-Maske) ≈ 1,19 m/m, mit Vorgebirge ≈ 1,06 m/m.
+    #[test]
+    fn mountain_edges_are_not_blocky() {
+        let world = WorldGen::new(42);
+        let sea = world.cfg.sea_level;
+        let mut steps = Vec::new();
+        for z in (-12000..12000).step_by(800) {
+            for x in (-12000..12000).step_by(800) {
+                let sample = world.sample(x as f32, z as f32);
+                if sample.mountain < 0.8 || sample.height < sea + 80.0 {
+                    continue;
+                }
+                for a in 0..8 {
+                    let angle = a as f32 / 8.0 * std::f32::consts::TAU;
+                    let (dx, dz) = (angle.cos() * 5.0, angle.sin() * 5.0);
+                    let profile: Vec<f32> =
+                        (0..300).map(|i| world.column_height(x as f32 + dx * i as f32, z as f32 + dz * i as f32)).collect();
+                    steps.push(profile.windows(4).map(|w| (w[0] - w[3]).abs()).fold(0.0, f32::max) / 15.0);
+                }
+            }
+        }
+        assert!(steps.len() > 200, "zu wenige Profile: {}", steps.len());
+        steps.sort_by(f32::total_cmp);
+        let median = steps[steps.len() / 2];
+        assert!(median < 1.13, "steilste Stufe an Gebirgsrändern im Median {median:.2} m/m");
     }
 }
