@@ -188,7 +188,7 @@ pub(super) fn stream_columns(
                 world.cfg.sea_level,
                 position.x,
                 position.y,
-                &column.heights,
+                column.heights(),
                 &column.biomes,
                 &column.temperatures,
             );

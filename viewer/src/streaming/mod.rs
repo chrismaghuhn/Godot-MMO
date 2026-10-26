@@ -19,7 +19,7 @@ use terraforge_core::volume::{self, ColumnData};
 
 pub use caves::{CaveChunk, CaveJobs};
 pub use columns::{ColumnJobs, ColumnMap};
-pub use far::{FAR_VIEW, FarTileMarker};
+pub use far::{FAR_GUARANTEED, FAR_VIEW, FarTileMarker, MAX_VIEW_RADIUS};
 
 pub const CHUNK_SIZE: f32 = volume::CHUNK_SIZE as f32;
 

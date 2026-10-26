@@ -98,14 +98,16 @@ impl WorldGen {
         let hill_amp = (1.0 + 4.0 * rugged + 4.0 * ridge_mask) * (1.0 - 0.75 * plains);
 
         // Basishöhe als Kurve: Meeresboden -> Schelf -> flache Küstenebene -> sanftes Inland.
-        // Die Meereslinie liegt wie vorher bei continental ~ -0.1, damit die Landmasse gleich bleibt.
+        // Die Meereslinie liegt bei continental ~ -0.1; das Vorgebirge (#36) hebt Küste und Schelf
+        // nicht an, die Landmasse bleibt dadurch gleich.
         let c = raw.continental;
         let mut height = -46.0
             + 72.0 * smoothstep(-0.60, -0.15, c)
             + 14.0 * smoothstep(-0.17, 0.00, c)
             + 46.0 * smoothstep(0.00, 0.85, c);
         height += raw.ridge.powf(1.6) * 118.0 * ridge_mask;
-        height += 30.0 * foothills;
+        // Nicht an Küste und Schelf, damit der Landanteil gleich bleibt (Review zu #36).
+        height += 30.0 * foothills * smoothstep(sea, sea + 25.0, height);
         height += raw.detail * hill_amp;
         height += continental * 5.0;
 

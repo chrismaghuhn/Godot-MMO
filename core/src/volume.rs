@@ -31,7 +31,9 @@ pub struct ColumnData {
     pub chunk_x: i32,
     pub chunk_z: i32,
     /// `heights[z][x]` für lokale Koordinaten `x, z` in `-1..=CHUNK_SIZE + 1` (Index = lokal + 1).
-    pub heights: [[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES],
+    /// Nur im Core veränderbar (Tests), weil abgeleitete Werte zwischengespeichert werden (#42);
+    /// von außen über `heights()` lesen.
+    pub(crate) heights: [[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES],
     /// Biome mit derselben Indizierung wie `heights`.
     pub biomes: [[BiomeRef; COLUMN_SAMPLES]; COLUMN_SAMPLES],
     /// Temperatur (-1..1) mit derselben Indizierung wie `heights`, z. B. für die Baumart (#40).
@@ -122,6 +124,11 @@ impl ColumnData {
             }
         }
         column
+    }
+
+    /// Alle Höhen (`heights[z][x]`, Index = lokal + 1), z. B. für die Baumplanung.
+    pub fn heights(&self) -> &[[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES] {
+        &self.heights
     }
 
     /// Höhe an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).

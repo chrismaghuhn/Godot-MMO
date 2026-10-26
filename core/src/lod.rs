@@ -13,9 +13,11 @@
 //! sind deshalb bitgleich.
 
 use crate::geology::material_at;
-use crate::material::MaterialId;
 use crate::mesh::ChunkMesh;
-use crate::world::WorldGen;
+use crate::world::{WorldGen, smoothstep};
+
+/// Hangneigung (m/m), ab der Fels statt Biom-Farbe gezeigt wird (wie die Bodengrenze in `geology`).
+const ROCK_SLOPE: (f32, f32) = (0.6, 1.2);
 
 /// Beschreibung einer Fernkachel.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -38,33 +40,43 @@ impl FarTile {
         let n = self.cells;
         let verts = n + 1;
         let step = self.step;
-        // Höhen mit einem Rand von einer Zelle, für Normalen an der Kante.
+        // Höhen mit einem Rand von einer Zelle, für Normalen und Hangneigung an der Kante.
         let side = verts + 2;
         let mut heights = vec![0.0f32; side * side];
-        let mut colors = vec![[0u8; 3]; verts * verts];
-        let mut materials = vec![MaterialId::AIR; verts * verts];
+        let mut samples = Vec::with_capacity(verts * verts);
         for iz in 0..side {
             for ix in 0..side {
                 let x = self.origin_x + (ix as f32 - 1.0) * step;
                 let z = self.origin_z + (iz as f32 - 1.0) * step;
                 let sample = world.sample(x, z);
                 heights[iz * side + ix] = sample.height;
-                let inner = (1..=verts).contains(&ix) && (1..=verts).contains(&iz);
-                if inner {
-                    let (vx, vz) = (ix - 1, iz - 1);
-                    let biome = world.biome_at(&sample);
-                    colors[vz * verts + vx] =
-                        world.apply_altitude(world.surface_color(&sample, biome), sample.height);
-                    // Oberflächenmaterial wie im Nahbereich (Boden fehlt an Steilhängen).
-                    let east = world.column_height(x + 1.0, z);
-                    let south = world.column_height(x, z + 1.0);
-                    let slope = (east - sample.height).abs().max((south - sample.height).abs());
-                    let geology = world.geology.column(x, z, &sample, biome, slope);
-                    materials[vz * verts + vx] = material_at(&geology, 0.25, sample.height - 0.25);
+                if (1..=verts).contains(&ix) && (1..=verts).contains(&iz) {
+                    samples.push((x, z, sample));
                 }
             }
         }
         let height = |vx: usize, vz: usize| heights[(vz + 1) * side + vx + 1];
+
+        // Farbe und Material wie im Nahbereich: Biom-Farbe oben, an Steilhängen Fels (dort fehlt
+        // der Boden, und das Nah-Mesh zeigt die Material-Farbe). Hangneigung aus dem Raster
+        // (zentrale Differenzen), ohne zusätzliche Weltabfragen.
+        let mut colors = Vec::with_capacity(verts * verts);
+        let mut materials = Vec::with_capacity(verts * verts);
+        for (i, (x, z, sample)) in samples.iter().enumerate() {
+            let (vx, vz) = (i % verts, i / verts);
+            let at = |dx: isize, dz: isize| heights[((vz as isize + 1 + dz) as usize) * side + (vx as isize + 1 + dx) as usize];
+            let slope = ((at(1, 0) - at(-1, 0)).abs().max((at(0, 1) - at(0, -1)).abs())) / (2.0 * step);
+            let biome = world.biome_at(sample);
+            let geology = world.geology.column(*x, *z, sample, biome, slope);
+            let material = material_at(&geology, 0.25, sample.height - 0.25);
+            let surface = world.apply_altitude(world.surface_color(sample, biome), sample.height);
+            let rock = smoothstep(ROCK_SLOPE.0, ROCK_SLOPE.1, slope);
+            let below = world.materials.display_color(material);
+            colors.push(std::array::from_fn(|c| {
+                (surface[c] as f32 * (1.0 - rock) + below[c] as f32 * rock).round() as u8
+            }));
+            materials.push(material);
+        }
 
         let included: Vec<bool> = (0..n * n)
             .map(|i| {
@@ -221,5 +233,48 @@ mod tests {
     fn fully_excluded_tile_is_empty() {
         let world = WorldGen::new(42);
         assert!(tile(0.0, 0.0).build(&world, |_, _| true).is_empty());
+    }
+
+    /// Fein (4 m) und grob (16 m) nebeneinander: Die Höhenabweichung an der gemeinsamen Kante
+    /// plus der Höhenversatz der Stufen (0,8 m im Viewer) muss kleiner sein als die Schürze der
+    /// feinen Kachel (12 m), sonst bleibt ein Riss.
+    #[test]
+    fn skirts_cover_the_resolution_mismatch() {
+        let world = WorldGen::new(42);
+        let mut worst = 0.0f32;
+        // Viele Kanten, auch im Gebirge.
+        for (x0, z0) in [(0.0, 0.0), (2048.0, -1024.0), (-3072.0, 512.0), (4608.0, 4608.0), (1024.0, 3328.0)] {
+            let fine = FarTile { origin_x: x0, origin_z: z0, cells: 64, step: 4.0, skirt: 12.0 };
+            let coarse = FarTile { origin_x: x0 + 256.0, origin_z: z0, cells: 16, step: 16.0, skirt: 40.0 };
+            let (mf, mc) = (fine.build(&world, |_, _| false), coarse.build(&world, |_, _| false));
+            for vz in 0..=64 {
+                let fine_height = mf.positions[vz * 65 + 64][1];
+                // Grobe Kante: lineare Interpolation zwischen 16-m-Punkten.
+                let (cz, t) = (vz / 4, (vz % 4) as f32 / 4.0);
+                let a = mc.positions[cz * 17][1];
+                let b = mc.positions[(cz + 1).min(16) * 17][1];
+                worst = worst.max((fine_height - (a * (1.0 - t) + b * t)).abs());
+            }
+        }
+        assert!(worst + 0.8 < 12.0, "Höhenabweichung an der Stufengrenze {worst:.1} m");
+    }
+
+    #[test]
+    fn steep_far_terrain_shows_rock() {
+        let world = WorldGen::new(42);
+        // Kachel in einem Gebirge (Gipfel aus dem Kanten-Test in `world`).
+        let mut rock_coloured = 0;
+        for (x0, z0) in [(-11_200.0, -11_200.0), (2400.0, -800.0), (-400.0, 400.0), (7200.0, -4000.0)] {
+            let tile = FarTile { origin_x: x0, origin_z: z0, cells: 64, step: 4.0, skirt: 12.0 };
+            let mesh = tile.build(&world, |_, _| false);
+            for (i, &color) in mesh.colors.iter().take(65 * 65).enumerate() {
+                let material = mesh.materials[i];
+                let entry = world.materials.get(material).unwrap();
+                if entry.category != crate::material::MaterialCategory::Soil && color == world.materials.display_color(material) {
+                    rock_coloured += 1;
+                }
+            }
+        }
+        assert!(rock_coloured > 50, "kaum Felsfarbe an steilem Fernterrain: {rock_coloured}");
     }
 }

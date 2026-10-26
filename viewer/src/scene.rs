@@ -12,7 +12,7 @@ use terraforge_core::{
 
 use crate::controls::{AutoPilot, WalkMode, WalkState};
 use crate::meshes::tree_geo_to_mesh;
-use crate::streaming::{CHUNK_SIZE, ChunkAssets, FAR_VIEW};
+use crate::streaming::{CHUNK_SIZE, ChunkAssets, FAR_GUARANTEED, FAR_VIEW};
 use crate::{WorldRes, env_parse};
 
 #[derive(Resource)]
@@ -53,7 +53,8 @@ pub fn setup_scene(
         .unwrap_or(0.0);
     // Mit Fernterrain (#33) reicht die Sicht bis ~3,5 km, sonst bis zum Rand der Nahzone.
     let far = env_parse::<u32>("TERRAFORGE_FAR").unwrap_or(1) != 0;
-    let fog_end = if far { FAR_VIEW * 0.92 } else { world.0.cfg.view_radius as f32 * CHUNK_SIZE - 20.0 };
+    // Nebel endet vor der garantierten Reichweite (Kamera am Feldrand), sonst sieht man die Kante.
+    let fog_end = if far { FAR_GUARANTEED * 0.95 } else { world.0.cfg.view_radius as f32 * CHUNK_SIZE - 20.0 };
     let fog_start = if far { fog_end * 0.30 } else { fog_end * 0.55 };
     let camera_position = spawn + Vec3::new(0.0, 4.5 + camera_lift, 0.0);
     commands.insert_resource(WalkState(camera_position));

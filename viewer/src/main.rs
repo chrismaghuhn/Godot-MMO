@@ -50,8 +50,9 @@ fn main() {
         .unwrap_or(42);
 
     let mut world = WorldGen::new(seed);
-    if let Some(radius) = env_parse("TERRAFORGE_VIEW_RADIUS") {
-        world.cfg.view_radius = radius;
+    if let Some(radius) = env_parse::<i32>("TERRAFORGE_VIEW_RADIUS") {
+        // Obergrenze: Darüber ragt die Nahzone aus der feinen Fernstufe heraus (#33).
+        world.cfg.view_radius = radius.clamp(1, streaming::MAX_VIEW_RADIUS);
     }
     let (secret_seed, dev_seed) = secret_seed_from_env(seed);
     let underground = Underground::new(secret_seed, &world.cfg);
