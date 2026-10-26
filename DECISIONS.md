@@ -406,3 +406,24 @@ Härte-Stufen (#21), Ausbeute fürs Inventar (#18), Speicherung (#19) und der Se
 - Speicherung fehlt noch (#19), Bäume über Löchern schweben noch (#7).
 - Review-Funde: verlorene Neubauten bei belegten Job-Plätzen, lange Locks beim Graben, Invariante
   im Speicher – behoben.
+
+## D-017: Bäume auf der Volumen-Oberfläche, gefällte Bäume, Regel für Clients
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Bäume wurden auf der Höhenkarte geplant und schwebten über Höhleneingängen und
+gegrabenen Löchern (#7). Bäume sollen später gefällt werden (Axt, #21) und das gespeichert werden.
+
+**Entscheidung:**
+- Jeder Baum hat eine stabile ID (Spalten-Chunk + Zelle).
+- `settle_tree` setzt den geplanten Baum auf die tatsächliche Oberfläche (an den vier Ecken der Zelle
+  gesucht und interpoliert). Fehlt Boden, ist er zugeschüttet oder liegt etwas Festes darüber, entfällt
+  der Baum.
+- Gefällte Bäume sind Teil der Weltänderungen (`WorldEdits::fell_tree`).
+- **Regel für Clients (D-005):** Baum-Menge = `settle(öffentlicher Plan, Dichte, die der Client für
+  den Chunk hat)`. Der Server ist nur für die gefällten Bäume maßgeblich. Fernterrain-Bäume (#54)
+  nutzen den ungefilterten öffentlichen Plan und werden ersetzt, sobald der Chunk ankommt. Es dürfen
+  keine Informationen über entfernte Bäume über den Radius hinaus gesendet werden, in dem Chunks
+  ohnehin aufgedeckt sind – sonst verraten sie Höhleneingänge.
+
+**Folgen:** Mit Höhlen entfallen ≈ 0,1 % der Bäume (an großen Eingängen ≈ 3 %), ohne Höhlen keiner.

@@ -63,7 +63,7 @@ pub struct TreePlacement {
 pub struct TreeId {
     pub chunk_x: i32,
     pub chunk_z: i32,
-    /// `z * CHUNK_SIZE + x` der Zelle.
+    /// `z * CHUNK_SIZE + x` der Zelle (`plan_trees` prüft, dass die Spalte CHUNK_SIZE Zellen hat).
     pub cell: u16,
 }
 

@@ -24,6 +24,8 @@ pub fn plan_trees<const N: usize>(
     temperatures: &[[f32; N]; N],
 ) -> Vec<TreePlacement> {
     let cells = N.saturating_sub(3);
+    // Die Baum-ID nutzt `z * CHUNK_SIZE + x`; die Planung arbeitet immer auf einer ganzen Spalte.
+    assert_eq!(cells, crate::volume::CHUNK_SIZE as usize, "plan_trees erwartet Spalten mit CHUNK_SIZE Zellen");
     let mut trees = Vec::new();
 
     for z in 0..cells {

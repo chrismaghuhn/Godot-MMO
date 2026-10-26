@@ -89,6 +89,26 @@ impl VoxelCache {
     }
 }
 
+/// Erster Punkt entlang des Strahls mit festem Voxel (Änderung oder generiert) und sein Abstand.
+fn ray_hit(
+    origin: Vec3,
+    direction: Vec3,
+    reach: f32,
+    edits: &terraforge_core::edits::WorldEdits,
+    mut voxel_at: impl FnMut(IVec3) -> Voxel,
+) -> Option<(Vec3, f32)> {
+    let mut distance = 0.0;
+    while distance < reach {
+        let point = origin + direction * distance;
+        let voxel = point.round().as_ivec3();
+        if edits.get(voxel).unwrap_or_else(|| voxel_at(voxel)).density > 0.0 {
+            return Some((point, distance));
+        }
+        distance += RAY_STEP;
+    }
+    None
+}
+
 #[derive(Component)]
 struct Crosshair;
 
@@ -151,19 +171,7 @@ fn dig_input(
     let direction = transform.forward().as_vec3();
     let hit = {
         let edits = edits.0.read().expect("Edits-Lock vergiftet");
-        let mut hit = None;
-        let mut distance = 0.0;
-        while distance < REACH {
-            let point = origin + direction * distance;
-            let voxel = point.round().as_ivec3();
-            let value = edits.get(voxel).unwrap_or_else(|| cache.voxel(&world, &underground, &columns, voxel));
-            if value.density > 0.0 {
-                hit = Some(point);
-                break;
-            }
-            distance += RAY_STEP;
-        }
-        hit
+        ray_hit(origin, direction, REACH, &edits, |v| cache.voxel(&world, &underground, &columns, v)).map(|(p, _)| p)
     };
     let Some(hit) = hit else {
         status.last = "kein Ziel in Reichweite".into();
@@ -220,13 +228,23 @@ fn dig_input(
     }
 }
 
-/// Fällt den Baum, auf den das Fadenkreuz zeigt (Abstand Strahl–Stamm < 1,2 m, Reichweite 32 m).
+/// Reichweite fürs Fällen.
+const FELL_REACH: f32 = 32.0;
+
+/// Fällt den Baum, auf den das Fadenkreuz zeigt (Abstand Strahl–Stamm < 1,2 m). Bäume hinter
+/// Terrain zählen nicht (Strahl endet am ersten festen Voxel). Der Baum verschwindet sofort;
+/// die Spalte wird nicht neu gebaut, `felled` sorgt dafür, dass er bei Neubau/Neuladen fehlt.
+#[allow(clippy::too_many_arguments)]
 fn fell_tree(
+    mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     camera: Query<&Transform, With<Camera3d>>,
-    trees: Query<(&Tree, &GlobalTransform)>,
+    trees: Query<(Entity, &Tree, &GlobalTransform)>,
+    world: Res<WorldRes>,
+    underground: Res<UndergroundRes>,
+    columns: Res<ColumnCache>,
     edits: Res<EditsRes>,
-    mut dirty: ResMut<DirtyChunks>,
+    mut cache: ResMut<VoxelCache>,
     mut status: ResMut<DigStatus>,
 ) {
     if !keys.just_pressed(KeyCode::KeyX) {
@@ -236,30 +254,33 @@ fn fell_tree(
         return;
     };
     let (origin, direction) = (transform.translation, transform.forward().as_vec3());
-    let mut best: Option<(f32, terraforge_core::vegetation::TreeId)> = None;
-    for (tree, global) in &trees {
+    let terrain = {
+        let edits = edits.0.read().expect("Edits-Lock vergiftet");
+        ray_hit(origin, direction, FELL_REACH, &edits, |v| cache.voxel(&world, &underground, &columns, v))
+    };
+    let limit = terrain.map_or(FELL_REACH, |(_, distance)| distance + 0.5);
+    let mut best: Option<(f32, Entity, terraforge_core::vegetation::TreeId)> = None;
+    for (entity, tree, global) in &trees {
         let base = global.translation();
         let height = 5.0 * global.scale().y;
-        // Kürzester Abstand zwischen Strahl und Stamm (senkrechte Strecke base..base+height),
-        // über Abtastung entlang des Stamms.
         for i in 0..=10 {
             let point = base + Vec3::Y * height * i as f32 / 10.0;
             let along = (point - origin).dot(direction);
-            if !(0.0..=32.0).contains(&along) {
+            if !(0.0..=limit).contains(&along) {
                 continue;
             }
             let miss = (origin + direction * along).distance(point);
-            if miss < 1.2 && best.is_none_or(|(d, _)| along < d) {
-                best = Some((along, tree.0));
+            if miss < 1.2 && best.is_none_or(|(d, _, _)| along < d) {
+                best = Some((along, entity, tree.0));
             }
         }
     }
-    let Some((_, id)) = best else {
+    let Some((_, entity, id)) = best else {
         status.last = "kein Baum im Visier".into();
         return;
     };
     if edits.0.write().expect("Edits-Lock vergiftet").fell_tree(id) {
-        dirty.columns.insert(IVec2::new(id.chunk_x, id.chunk_z));
+        commands.entity(entity).despawn();
         status.last = "Baum gefällt".into();
     }
 }

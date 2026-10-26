@@ -141,6 +141,12 @@ pub(super) fn stream_columns(
             continue;
         }
         ctx.cache.0.insert(position, Arc::clone(&build.column));
+        // Erneut gegen gefällte Bäume filtern: Der Job kann vor dem Fällen gestartet sein.
+        let mut build = build;
+        {
+            let edits = ctx.edits.0.read().expect("Edits-Lock vergiftet");
+            build.trees.retain(|tree| !edits.is_felled(tree.id));
+        }
         // Neubau: alte Spalte erst entfernen, wenn die neue da ist (kein Flackern).
         if let Some(old) = ctx.chunks.0.remove(&position) {
             commands.entity(old).despawn();
@@ -260,8 +266,14 @@ pub(super) fn stream_columns(
                 let o = chunk.origin();
                 chunk.get(voxel.x - o.x, voxel.y - o.y, voxel.z - o.z)
             };
+            // Gefällte Bäume einmal pro Spalte abfragen (ein konsistenter Stand).
+            let felled: Vec<bool> = {
+                let edits = edits.read().expect("Edits-Lock vergiftet");
+                trees.iter().map(|tree| edits.is_felled(tree.id)).collect()
+            };
+            let mut felled = felled.into_iter();
             trees.retain_mut(|tree| {
-                if edits.read().expect("Edits-Lock vergiftet").is_felled(tree.id) {
+                if felled.next().unwrap_or(false) {
                     return false;
                 }
                 // Lokale Koordinaten: Voxel x/z liegen im eigenen Chunk (0..=32).

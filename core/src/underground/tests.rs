@@ -385,15 +385,16 @@ fn shell_protects_a_synthetic_pit_against_caves_everywhere() {
 }
 
 /// #7: Mit Höhlen (inkl. Eingängen) steht kein Baum in der Luft, unter einer Höhlendecke oder
-/// über einem Loch: Jeder gesetzte Baum hat festen Boden unter und Freiraum über der Wurzel.
+/// über einem Loch. Geprüft als Eigenschaft an der echten Wurzelposition (trilinear): fest
+/// 0,5 m unter der Wurzel, frei 1-3 m darüber. Außerdem müssen Höhlen tatsächlich Bäume
+/// entfernen, die mit nur öffentlichen Daten stehen würden.
 #[test]
 fn settled_trees_stand_on_the_volume_surface() {
     use crate::vegetation::{plan_trees, settle_tree};
     use std::collections::HashMap;
     let world = WorldGen::new(42);
     let underground = Underground::new(SecretSeed::insecure_dev_seed(42), &world.cfg);
-    let (mut planned, mut kept) = (0, 0);
-    // Spalten rund um große Höhleneingänge (Messung mit diesem Seed) und Zufallsorte.
+    let (mut planned, mut kept, mut removed_by_caves) = (0, 0, 0);
     let mut columns = Vec::new();
     for (x, z) in [(-363.9f32, -1728.4f32), (30.8, -1039.5), (1991.9, 1877.1), (0.0, 0.0), (700.0, -300.0)] {
         let (cx, cz) = ((x / CHUNK_SIZE as f32).floor() as i32, (z / CHUNK_SIZE as f32).floor() as i32);
@@ -405,10 +406,13 @@ fn settled_trees_stand_on_the_volume_surface() {
     }
     for (chunk_x, chunk_z) in columns {
         let column = ColumnData::sample(&world, chunk_x, chunk_z);
-        let mut chunks: HashMap<i32, DensityChunk> = HashMap::new();
-        let mut density = |v: glam::IVec3| {
+        let mut secret: HashMap<i32, DensityChunk> = HashMap::new();
+        let mut public: HashMap<i32, DensityChunk> = HashMap::new();
+        let lookup = |cache: &mut HashMap<i32, DensityChunk>, with_caves: bool, v: glam::IVec3| {
             let chunk_y = v.y.div_euclid(CHUNK_SIZE);
-            let chunk = chunks.entry(chunk_y).or_insert_with(|| underground.materials_chunk(&world, &column, chunk_y));
+            let chunk = cache.entry(chunk_y).or_insert_with(|| {
+                if with_caves { underground.materials_chunk(&world, &column, chunk_y) } else { DensityChunk::from_column(&column, chunk_y) }
+            });
             let origin = chunk.origin();
             chunk.get(v.x - origin.x, v.y - origin.y, v.z - origin.z)
         };
@@ -420,17 +424,40 @@ fn settled_trees_stand_on_the_volume_surface() {
                 tree.position.y,
                 (chunk_z * CHUNK_SIZE) as f32 + tree.position.z,
             );
-            // Nur lokale Lookups im eigenen Spalten-Chunk (x, z innerhalb 0..32).
-            let Some(y) = settle_tree(root, &mut density) else { continue };
+            let with_caves = settle_tree(root, |v| lookup(&mut secret, true, v));
+            let without = settle_tree(root, |v| lookup(&mut public, false, v));
+            assert!(without.is_some(), "Baum ohne Höhlen entfernt bei {root}");
+            let Some(y) = with_caves else {
+                removed_by_caves += 1;
+                continue;
+            };
             kept += 1;
-            let (x, z) = (root.x.round() as i32, root.z.round() as i32);
-            let ground = density(glam::IVec3::new(x, (y + 0.25).floor() as i32, z));
-            let over = density(glam::IVec3::new(x, (y + 0.25).floor() as i32 + 2, z));
-            assert!(ground > 0.0, "Baum ohne Boden bei {x},{y},{z}");
-            assert!(over <= 0.0, "Baum unter einer Decke bei {x},{y},{z}");
+            // Trilinear an der echten Position.
+            let mut sample = |p: glam::Vec3| {
+                let base = p.floor().as_ivec3();
+                let t = p - base.as_vec3();
+                let mut sum = 0.0;
+                for dz in 0..2 {
+                    for dy in 0..2 {
+                        for dx in 0..2 {
+                            let w = (if dx == 1 { t.x } else { 1.0 - t.x })
+                                * (if dy == 1 { t.y } else { 1.0 - t.y })
+                                * (if dz == 1 { t.z } else { 1.0 - t.z });
+                            sum += w * lookup(&mut secret, true, base + glam::IVec3::new(dx, dy, dz));
+                        }
+                    }
+                }
+                sum
+            };
+            let at = glam::Vec3::new(root.x, y + 0.25, root.z);
+            assert!(sample(at - glam::Vec3::Y * 0.5) > 0.0, "kein Boden unter dem Baum bei {at}");
+            for h in [1.0, 2.0, 3.0] {
+                assert!(sample(at + glam::Vec3::Y * h) <= 0.0, "Decke über dem Baum bei {at}");
+            }
         }
     }
-    eprintln!("Bäume: {kept} von {planned} gesetzt");
+    eprintln!("Bäume: {kept} von {planned} gesetzt, {removed_by_caves} wegen Höhlen entfernt");
     assert!(planned > 100);
+    assert!(removed_by_caves > 0, "Testgebiet deckt keinen Höhleneingang unter Bäumen ab");
     assert!(kept * 100 >= planned * 90, "zu viele Bäume entfernt: {kept}/{planned}");
 }

@@ -17,13 +17,27 @@ const ROOT_DEPTH: f32 = 0.25;
 /// Neue Wurzelhöhe (Welt-y) oder `None`, wenn der Baum nicht stehen kann.
 ///
 /// `root` ist die geplante Wurzel in Weltkoordinaten, `density(voxel)` die aktuelle Dichte
-/// (> 0 fest) inklusive Höhlen und Spieler-Änderungen.
+/// (> 0 fest) inklusive Höhlen und Spieler-Änderungen. Die Oberfläche wird an den vier
+/// Ecken der Zelle gesucht und an der Wurzelposition interpoliert (wie das Terrain-Mesh); fehlt
+/// sie an einer Ecke, steht der Baum nicht (Review zu #7: nur eine gerundete Ecke ließ Bäume an
+/// Hängen schweben).
 pub fn settle_tree(root: Vec3, mut density: impl FnMut(IVec3) -> f32) -> Option<f32> {
     let planned = root.y + ROOT_DEPTH;
-    let (x, z) = (root.x.round() as i32, root.z.round() as i32);
+    let (x0, z0) = (root.x.floor() as i32, root.z.floor() as i32);
+    let (tx, tz) = (root.x - x0 as f32, root.z - z0 as f32);
+    let mut corners = [0.0f32; 4];
+    for (i, (dx, dz)) in [(0, 0), (1, 0), (0, 1), (1, 1)].into_iter().enumerate() {
+        corners[i] = corner_surface(x0 + dx, z0 + dz, planned, &mut density)?;
+    }
+    let lerp = |a: f32, b: f32, t: f32| a * (1.0 - t) + b * t;
+    let surface = lerp(lerp(corners[0], corners[1], tx), lerp(corners[2], corners[3], tx), tz);
+    Some(surface - ROOT_DEPTH)
+}
+
+/// Oberfläche an einer Ecke: höchster Übergang fest -> Luft nahe `planned`, mit Freiraum darüber.
+fn corner_surface(x: i32, z: i32, planned: f32, density: &mut impl FnMut(IVec3) -> f32) -> Option<f32> {
     let top = (planned + GROUND_SEARCH).ceil() as i32 + 1;
     let bottom = (planned - GROUND_SEARCH).floor() as i32 - 1;
-    // Höchster Übergang fest -> Luft im Suchfenster.
     let mut surface = None;
     let mut y = top;
     while y > bottom {
@@ -38,13 +52,12 @@ pub fn settle_tree(root: Vec3, mut density: impl FnMut(IVec3) -> f32) -> Option<
     if (surface - planned).abs() > GROUND_SEARCH {
         return None;
     }
-    // Freiraum über dem Boden.
     let first = surface.floor() as i32 + 1;
     let last = (surface + CLEARANCE).ceil() as i32;
     if (first..=last).any(|y| density(IVec3::new(x, y, z)) > 0.0) {
         return None;
     }
-    Some(surface - ROOT_DEPTH)
+    Some(surface)
 }
 
 #[cfg(test)]
@@ -80,6 +93,21 @@ mod tests {
     }
 
     /// Ebene auf 10,5 m: Baum steht; Grube darunter, Überhang oder zugeschüttet: kein Baum.
+    /// Review zu #7: Auf einem Hang muss die Wurzel auf der interpolierten Höhe an der echten
+    /// Position sitzen, nicht auf der Höhe einer gerundeten Ecke.
+    #[test]
+    fn trees_on_slopes_sit_at_the_interpolated_height() {
+        for (slope_x, slope_z) in [(0.3f32, 0.0f32), (0.0, -0.4), (0.25, 0.2)] {
+            let ground = |x: f32, z: f32| 20.0 + slope_x * x + slope_z * z;
+            let tilted = move |v: IVec3| ground(v.x as f32, v.z as f32) - v.y as f32;
+            for (x, z) in [(3.2f32, 7.8f32), (10.7, 1.3), (5.5, 5.5), (0.1, 0.9)] {
+                let root = Vec3::new(x, ground(x, z) - ROOT_DEPTH, z);
+                let y = settle_tree(root, tilted).expect("Baum auf Hang");
+                assert!((y - root.y).abs() < 0.05, "Hang {slope_x}/{slope_z} bei {x},{z}: {y} statt {}", root.y);
+            }
+        }
+    }
+
     #[test]
     fn settle_rules_on_synthetic_ground() {
         let flat = |v: IVec3| 10.5 - v.y as f32;
