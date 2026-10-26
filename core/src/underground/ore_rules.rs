@@ -100,7 +100,7 @@ const RULES: [OreRule; 12] = [
         form: Form::Vein { frequency: 0.016, width: 0.006, extent: 0.42 },
         hosts: &[M::GRANITE, M::SLATE, M::MARBLE],
         min_depth: 10.0,
-        y_range: (-160.0, 60.0),
+        y_range: (-158.0, 60.0),
     },
     OreRule {
         kind: OreKind::Silver,
@@ -108,7 +108,7 @@ const RULES: [OreRule; 12] = [
         form: Form::Vein { frequency: 0.018, width: 0.010, extent: 0.30 },
         hosts: &[M::SLATE, M::GRANITE, M::LIMESTONE],
         min_depth: 8.0,
-        y_range: (-160.0, 120.0),
+        y_range: (-158.0, 120.0),
     },
     OreRule {
         kind: OreKind::Cinnabar,
@@ -124,7 +124,7 @@ const RULES: [OreRule; 12] = [
         form: Form::Vein { frequency: 0.020, width: 0.017, extent: 0.18 },
         hosts: &[M::GRANITE, M::SANDSTONE, M::MARBLE],
         min_depth: 6.0,
-        y_range: (-160.0, 220.0),
+        y_range: (-158.0, 220.0),
     },
     OreRule {
         kind: OreKind::Obsidian,
@@ -132,7 +132,7 @@ const RULES: [OreRule; 12] = [
         form: Form::Nest { frequency: 0.032, y_stretch: 1.0, threshold: 0.51 },
         hosts: &[M::BASALT],
         min_depth: 4.0,
-        y_range: (-160.0, 220.0),
+        y_range: (-158.0, 220.0),
     },
     OreRule {
         kind: OreKind::Sulfur,
@@ -148,7 +148,7 @@ const RULES: [OreRule; 12] = [
         form: Form::Nest { frequency: 0.032, y_stretch: 1.0, threshold: 0.575 },
         hosts: &[M::GRANITE, M::BASALT],
         min_depth: 8.0,
-        y_range: (-160.0, 220.0),
+        y_range: (-158.0, 220.0),
     },
     OreRule {
         kind: OreKind::Tin,
@@ -156,7 +156,7 @@ const RULES: [OreRule; 12] = [
         form: Form::Nest { frequency: 0.035, y_stretch: 1.0, threshold: 0.54 },
         hosts: &[M::GRANITE, M::MARBLE],
         min_depth: 8.0,
-        y_range: (-160.0, 200.0),
+        y_range: (-158.0, 200.0),
     },
     OreRule {
         kind: OreKind::Copper,
@@ -212,6 +212,16 @@ mod tests {
             }
             assert!(rule.y_range.0 < rule.y_range.1);
             assert_eq!(OreKind::from_material(rule.material), Some(kind));
+        }
+    }
+
+    /// Chunks unterhalb von `CAVE_MIN_Y` werden ohne Untergrund erzeugt. Reicht ein Erz bis an die
+    /// Grenze, sehen die beiden Chunks an der gemeinsamen Ebene verschiedene Materialien
+    /// (Fund aus dem Review zu #45).
+    #[test]
+    fn ores_stay_above_the_cave_floor() {
+        for kind in OreKind::ALL {
+            assert!(kind.rule().y_range.0 > crate::underground::CAVE_MIN_Y, "{kind:?} reicht bis an CAVE_MIN_Y");
         }
     }
 

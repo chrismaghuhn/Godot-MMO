@@ -116,9 +116,15 @@ impl ColumnData {
         self.heights[(local_z - SAMPLE_MIN) as usize][(local_x - SAMPLE_MIN) as usize]
     }
 
-    /// Geologie an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).
+    /// Geologie an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE`, wie Dichte-Samples).
+    /// Bei `CHUNK_SIZE + 1` fehlt der +x/+z-Nachbar für die Hangneigung; der Wert wäre nicht
+    /// nahtkonsistent und ist deshalb nicht abrufbar.
     #[inline]
     pub fn geology(&self, local_x: i32, local_z: i32) -> &ColumnGeology {
+        debug_assert!(
+            (SAMPLE_MIN..=CHUNK_SIZE).contains(&local_x) && (SAMPLE_MIN..=CHUNK_SIZE).contains(&local_z),
+            "Geologie nur für -1..=CHUNK_SIZE gültig ({local_x},{local_z})"
+        );
         &self.geology[(local_z - SAMPLE_MIN) as usize * COLUMN_SAMPLES + (local_x - SAMPLE_MIN) as usize]
     }
 

@@ -328,8 +328,8 @@ mod tests {
     fn geology_is_deterministic() {
         let (a, b) = (WorldGen::new(7), WorldGen::new(7));
         let (column_a, column_b) = (ColumnData::sample(&a, 3, -4), ColumnData::sample(&b, 3, -4));
-        for z in SAMPLE_MIN..=CHUNK_SIZE + 1 {
-            for x in SAMPLE_MIN..=CHUNK_SIZE + 1 {
+        for z in SAMPLE_MIN..=CHUNK_SIZE {
+            for x in SAMPLE_MIN..=CHUNK_SIZE {
                 assert_eq!(column_a.geology(x, z), column_b.geology(x, z));
             }
         }
@@ -377,6 +377,34 @@ mod tests {
         }
         // 4 Spalten × 1-2 Oberflächen-Chunks × 3 Achsen × 2 Lagen × 34² ≈ 40.000
         assert!(compared > 20_000, "zu wenige Samples verglichen: {compared}");
+    }
+
+    /// Der öffentliche Generator (auch ohne Feature `underground`) erzeugt nur Boden und Gestein,
+    /// nie Erze oder Spezialmaterialien, und nur bekannte Material-IDs.
+    #[test]
+    fn public_generator_produces_only_soil_and_rock() {
+        let world = WorldGen::new(42);
+        for column in sample_columns(&world).into_iter().step_by(3) {
+            for chunk_y in -5..=4 {
+                let chunk = DensityChunk::from_column(&column, chunk_y);
+                for z in SAMPLE_MIN..=CHUNK_SIZE {
+                    for y in SAMPLE_MIN..=CHUNK_SIZE {
+                        for x in SAMPLE_MIN..=CHUNK_SIZE {
+                            let material = chunk.material(x, y, z);
+                            if material.is_air() {
+                                continue;
+                            }
+                            let entry = world.materials.get(material).unwrap_or_else(|| panic!("unbekannte ID {material:?}"));
+                            assert!(
+                                matches!(entry.category, MaterialCategory::Soil | MaterialCategory::Rock),
+                                "öffentlich erzeugt: {}",
+                                entry.key
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

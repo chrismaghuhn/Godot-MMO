@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use super::*;
-use crate::material::MaterialCategory;
 use crate::volume::{CHUNK_SIZE, SAMPLE_MIN};
 
 fn setup(secret: u64) -> (WorldGen, Underground) {
@@ -114,27 +113,6 @@ fn ore_share_is_reasonable() {
     assert!((0.002..0.08).contains(&share), "Erz-Anteil {share:.4} außerhalb 0,2-8 %");
 }
 
-/// Der öffentliche Generator erzeugt nie Erze oder Spezialmaterialien.
-#[test]
-fn public_generator_never_produces_ores() {
-    let world = WorldGen::new(42);
-    for column in columns(&world) {
-        for chunk_y in -5..=4 {
-            let chunk = DensityChunk::from_column(&column, chunk_y);
-            for_each_sample(|x, y, z| {
-                let material = chunk.material(x, y, z);
-                if let Some(entry) = world.materials.get(material) {
-                    assert!(
-                        matches!(entry.category, MaterialCategory::Soil | MaterialCategory::Rock),
-                        "öffentlich erzeugt: {}",
-                        entry.key
-                    );
-                }
-            });
-        }
-    }
-}
-
 /// `materials_chunk` und `density_chunk` liefern dasselbe, wo beide etwas liefern.
 #[test]
 fn materials_chunk_matches_density_chunk() {
@@ -200,6 +178,29 @@ fn ores_are_seamless_on_all_axes() {
         }
     }
     assert!(ore_on_faces > 0, "kein Erz an einer Chunk-Grenze: Test prüft Erz-Nähte nicht");
+}
+
+/// Naht an der Höhlengrenze: Chunk unter `CAVE_MIN_Y` (ohne Untergrund) und der darüber
+/// müssen an der gemeinsamen Ebene gleich sein (Review-Fund zu #45).
+#[test]
+fn cave_floor_boundary_is_seamless() {
+    let (world, underground) = setup(11);
+    let below = (CAVE_MIN_Y / CHUNK_SIZE as f32).floor() as i32 - 1;
+    let mut compared = 0;
+    for column in columns(&world) {
+        let lower = underground.materials_chunk(&world, &column, below);
+        let upper = underground.materials_chunk(&world, &column, below + 1);
+        for z in SAMPLE_MIN..=CHUNK_SIZE {
+            for x in SAMPLE_MIN..=CHUNK_SIZE {
+                for (lower_y, upper_y) in [(CHUNK_SIZE - 1, -1), (CHUNK_SIZE, 0)] {
+                    assert_eq!(lower.material(x, lower_y, z), upper.material(x, upper_y, z), "Naht bei {:?}, {x},{z}", column.chunk_x);
+                    assert_eq!(lower.get(x, lower_y, z).to_bits(), upper.get(x, upper_y, z).to_bits());
+                    compared += 1;
+                }
+            }
+        }
+    }
+    assert!(compared > 10_000);
 }
 
 #[test]

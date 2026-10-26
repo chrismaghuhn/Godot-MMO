@@ -111,36 +111,39 @@ pub(super) fn apply_ores(
     let lowest_y = (origin.y + SAMPLE_MIN) as f32;
     let highest_y = (origin.y + CHUNK_SIZE) as f32;
 
-    // 1. Provinz je Sample-Spalte. Ohne ein einziges Sample unterhalb der Schale: nichts zu tun.
+    // 1. Ohne ein einziges Sample unterhalb der Schale: nichts zu tun.
+    let any_deep = (SAMPLE_MIN..=CHUNK_SIZE)
+        .any(|z| (SAMPLE_MIN..=CHUNK_SIZE).any(|x| shell.lowest(x, z) - lowest_y >= SURFACE_SHELL));
+    if !any_deep {
+        return 0;
+    }
+
+    // 2. Provinz je Sample-Spalte (meist nur 1-2 verschiedene pro Chunk).
     let mut column_province: Vec<ProvinceId> = Vec::with_capacity(span * span);
     let mut defs: HashMap<ProvinceId, Province> = HashMap::new();
-    let mut any_deep = false;
     for z in SAMPLE_MIN..=CHUNK_SIZE {
         for x in SAMPLE_MIN..=CHUNK_SIZE {
             let id = provinces.province_at((origin.x + x) as f32, (origin.z + z) as f32);
             defs.entry(id).or_insert_with(|| provinces.province(world, id));
             column_province.push(id);
-            any_deep |= shell.lowest(x, z) - lowest_y >= SURFACE_SHELL;
         }
     }
-    if !any_deep {
-        return 0;
-    }
 
-    // 2. Gitter nur für Erzarten, die hier vorkommen und deren Höhenbereich den Chunk schneidet.
-    let mut grids: HashMap<OreKind, KindGrids> = HashMap::new();
+    // 3. Gitter nur für Erzarten, die hier vorkommen und deren Höhenbereich den Chunk schneidet.
+    let mut grids: [Option<KindGrids>; OreKind::ALL.len()] = Default::default();
     for province in defs.values() {
         for deposit in &province.deposits {
             let rule = deposit.kind.rule();
             let in_range = rule.y_range.0 <= highest_y && rule.y_range.1 >= lowest_y;
-            if rule.form != Form::Placer && in_range && !grids.contains_key(&deposit.kind) {
+            let slot = &mut grids[deposit.kind as usize];
+            if rule.form != Form::Placer && in_range && slot.is_none() {
                 let position = (chunk.position.x, chunk.position.y, chunk.position.z);
-                grids.insert(deposit.kind, KindGrids::build(noise, deposit.kind, position));
+                *slot = Some(KindGrids::build(noise, deposit.kind, position));
             }
         }
     }
 
-    // 3. Pro Sample das erste passende Vorkommen.
+    // 4. Pro Sample das erste passende Vorkommen.
     let mut placed = 0;
     let mut index = 0;
     for z in SAMPLE_MIN..=CHUNK_SIZE {
@@ -172,7 +175,7 @@ pub(super) fn apply_ores(
                         Form::Placer => placer_column && (PLACER_BAND.0..PLACER_BAND.1).contains(&shell_depth),
                         form => {
                             surface - world_y >= rule.min_depth
-                                && grids.get(&deposit.kind).is_some_and(|g| g.matches(form, deposit, x, y, z))
+                                && grids[deposit.kind as usize].as_ref().is_some_and(|g| g.matches(form, deposit, x, y, z))
                         }
                     };
                     if hit {

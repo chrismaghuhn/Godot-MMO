@@ -62,9 +62,12 @@ impl ProvinceMap {
         }
     }
 
+    /// Mittelpunkt einer Zelle, versetzt um 0,25..0,75 der Zellgröße. Mit diesem Bereich liegt
+    /// der nächste Mittelpunkt garantiert in den 3×3 Nachbarzellen (max. Abstand ≈ 1,06 Zellen,
+    /// jeder Mittelpunkt außerhalb ist ≥ 1,25 Zellen entfernt), was `province_at` voraussetzt.
     fn center(&self, (cell_x, cell_z): ProvinceId) -> (f32, f32) {
-        let jitter_x = 0.15 + 0.7 * self.seed.unit(&[cell_x as i64, cell_z as i64, SALT_CENTER_X]);
-        let jitter_z = 0.15 + 0.7 * self.seed.unit(&[cell_x as i64, cell_z as i64, SALT_CENTER_Z]);
+        let jitter_x = 0.25 + 0.5 * self.seed.unit(&[cell_x as i64, cell_z as i64, SALT_CENTER_X]);
+        let jitter_z = 0.25 + 0.5 * self.seed.unit(&[cell_x as i64, cell_z as i64, SALT_CENTER_Z]);
         ((cell_x as f32 + jitter_x) * PROVINCE_SIZE, (cell_z as f32 + jitter_z) * PROVINCE_SIZE)
     }
 

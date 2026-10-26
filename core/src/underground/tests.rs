@@ -278,3 +278,58 @@ fn chunks_without_surface_or_caves_need_no_density() {
     assert!(underground.density_chunk(&world, &column, 20).is_none(), "hoch in der Luft");
     assert!(underground.density_chunk(&world, &column, -20).is_none(), "unterhalb der Höhlen");
 }
+
+/// D-013 als Eigenschaft, auch an Höhleneingängen: Jede feste Ecke einer Zelle, die öffentliche
+/// Luft berührt, behält ihr öffentliches Material. Die Dichte darf sich an Eingängen ändern
+/// (Höhlen öffnen sich), aber ein Erz darf nie an der sichtbaren Oberfläche erscheinen.
+#[test]
+fn surface_materials_unchanged_even_at_entrances() {
+    let world = WorldGen::new(42);
+    let underground = Underground::new(SecretSeed::insecure_dev_seed(42), &world.cfg);
+    let sea = world.cfg.sea_level;
+    // Große Eingänge aus einer Messung mit diesem Seed (siehe #4/#45).
+    let spots = [(-1435.9, -1254.7), (-648.2, 979.9), (581.3, 1343.3), (-1585.2, 686.4), (33.9, -1042.3)];
+    let (mut cells, mut entrance_cells) = (0usize, 0usize);
+    for (x, z) in spots {
+        let (chunk_x, chunk_z) = ((x / CHUNK_SIZE as f32).floor() as i32, (z / CHUNK_SIZE as f32).floor() as i32);
+        for (dx, dz) in [(0, 0), (1, 0), (0, 1), (-1, 0), (0, -1)] {
+            let column = ColumnData::sample(&world, chunk_x + dx, chunk_z + dz);
+            for chunk_y in column.surface_chunks() {
+                let public = DensityChunk::from_column(&column, chunk_y);
+                let full = underground.materials_chunk(&world, &column, chunk_y);
+                let origin = public.origin();
+                for cz in SAMPLE_MIN..CHUNK_SIZE {
+                    for cy in SAMPLE_MIN..CHUNK_SIZE {
+                        for cx in SAMPLE_MIN..CHUNK_SIZE {
+                            let corners = [
+                                (cx, cy, cz), (cx + 1, cy, cz), (cx, cy + 1, cz), (cx + 1, cy + 1, cz),
+                                (cx, cy, cz + 1), (cx + 1, cy, cz + 1), (cx, cy + 1, cz + 1), (cx + 1, cy + 1, cz + 1),
+                            ];
+                            if !corners.iter().any(|&(a, b, c)| public.get(a, b, c) <= 0.0) {
+                                continue;
+                            }
+                            cells += 1;
+                            let at_entrance = [(cx, cz), (cx + 1, cz), (cx, cz + 1), (cx + 1, cz + 1)].iter().any(|&(a, c)| {
+                                underground.caves.entrance((origin.x + a) as f32, (origin.z + c) as f32, column.height(a, c), sea) > 0.0
+                            });
+                            if at_entrance {
+                                entrance_cells += 1;
+                            }
+                            for (a, b, c) in corners {
+                                if full.get(a, b, c) > 0.0 {
+                                    assert_eq!(
+                                        full.material(a, b, c),
+                                        public.material(a, b, c),
+                                        "Material an der Oberfläche verändert (Eingang: {at_entrance})"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(cells > 10_000, "zu wenige Oberflächen-Zellen: {cells}");
+    assert!(entrance_cells > 100, "Eingänge nicht abgedeckt: {entrance_cells}");
+}
