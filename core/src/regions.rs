@@ -122,6 +122,9 @@ impl RegionMap {
                 index += 1;
             }
         }
+        // Grenze der 3×3-Suche: In seltenen Ecklagen könnte ein Mittelpunkt zwei Zellen entfernt
+        // noch knapp Gewicht bekommen (≤ 0,5 % nach Normierung). Gemessen über 9 Mio. Punkte nie
+        // aufgetreten (Review zu #50); bewusst in Kauf genommen statt einer 5×5-Suche.
         // Nächste zuerst; bei gleichem Abstand entscheidet die Region (deterministisch).
         candidates.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
         let nearest = candidates[0].1;

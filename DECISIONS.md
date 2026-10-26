@@ -329,3 +329,30 @@ wenn sie freiliegen) wird im Core vorbereitet und in #26 genutzt.
   ohne Untergrund erzeugt werden (Review-Fund: Naht bei y = -160).
 - `Underground::materials_chunk` liefert vollständiges Material auch für massiven Fels (für #6);
   `density_chunk` bleibt "braucht ein Mesh?". Akzentfarben in `materials.ron` für Erze.
+
+## D-014: Große öffentliche Regionen (BOTW-Gefühl)
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Die Welt wirkte kleinteilig: Biom-Varianten wechselten alle ~100 m (Flickenteppich
+aus Noise-Bändern), Familien-Flächen waren ~0,4 km groß. Wunsch: große Regionen mit klarer
+Identität wie in Zelda Breath of the Wild (4-8 km). Zusätzlich kamen Kristall-Biome nie vor (#49).
+
+**Entscheidung:**
+- `core/src/regions.rs`: öffentliche Regionen als Voronoi-Zellen (Abstand 6 km, verzerrte
+  Koordinaten für organische Grenzen). Pro Region: eine feste Variante je Biom-Familie, eine
+  Klima-Tendenz und ein Thema (normal 81 %, Vulkan 7 %, Kristall 6 %, Pilz 6 %).
+- Spezial-Biome kommen aus dem Regions-Thema statt aus eigenen Noise-Schwellen (löst #49).
+- Übergänge: Jede nahe Region bekommt ein stetiges Gewicht nach Abstand, normiert. Gemischt
+  werden Klima, Thema und Oberflächenfarbe über 700 m je Seite. Erste Fassung mischte nur zwei
+  Regionen und sprang an Dreiländerecken (Review-Fund).
+- Weltmaßstab 2-3× größer (Kontinente, Klima, Gebirge, Flüsse); Flussbreite und Uferneigung an
+  die großräumigere Fluss-Noise angepasst.
+- Regionen sind öffentlich (sichtbar), D-005 bleibt unberührt.
+
+**Ergebnis (Seed 42, 32×32 km):** typische Varianten-Fläche 0,10 → ~1,5 km, Familien-Fläche
+0,42 → ~1,6 km (Regionen selbst 4-8 km, darin mehrere Familien je nach Gelände). Mehr flaches
+Land: < 5° ~16 % → ~33 %, steiler als 30° ~28 % → ~15 % (ergänzt D-007).
+
+**Folgen:** Die ganze Welt hat sich verschoben (Spawn, Karten, Biom-Verteilung). Das Gefühl
+großer Regionen braucht weite Sicht; dafür wird LOD (#33) wichtiger.
