@@ -387,3 +387,40 @@ möglich entstehen. Details in [docs/design/schmieden.md](docs/design/schmieden.
 **Folgen:** Das Datenmodell der Klinge ist das Herzstück und muss vor der Umsetzung festgelegt
 werden. Prozedurale Optik braucht einen klaren Stil, sonst wirkt sie technisch. Ein Schwert wird
 als wenige hundert Bytes übertragen statt als Mesh.
+
+## D-016: Charakter prozedural, First-Person mit echtem Körper
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Für Phase 5 (#24) muss feststehen, wie ein Spieler aussieht, wie er sich bewegt und
+kämpft. Wie beim Schmieden (D-015) sollen so wenig Assets wie möglich entstehen. Details in
+[docs/design/charakter.md](docs/design/charakter.md) und [docs/design/kampf.md](docs/design/kampf.md).
+
+**Entscheidung:**
+- Stil stilisiert und etwas kantig. Körper aus Formen pro Knochen eines gemeinsamen Skeletts,
+  Mesh und Skin-Gewichte werden erzeugt, keine Modell- oder Textur-Assets.
+- First-Person mit echtem Körper: Kamera im Kopf des eigenen Charakters, andere sehen denselben
+  Körper in Third-Person.
+- Animation hybrid: Grund-Bewegungen als Keyframes im Code, darüber prozedurale Schichten
+  (Fuß-IK, Proportionen, Nachschwingen, Gewicht). Bewegung in `core/`, Animation in Godot.
+- Kampf aktiv und körperbetont: richtungsbasierte Schläge, Waffen-Physik aus der
+  Schmiede-Simulation, Parieren, Ausweichen, Ausdauer, Trefferzonen.
+- Proportionen wirken im Kampf (Reichweite), ausgeglichen durch Trefferfläche, Ausdauer,
+  Ausweichtempo und eine begrenzte Spanne.
+- Herkunftsregion beim Start bestimmt Kultur, Startwissen und Startpunkt, nicht den Körper.
+- Der Körper verändert sich langsam und begrenzt durch das, was man tut (Muskeln, Bräune,
+  ortsgenaue Narben).
+- Kein Klettern zum Start.
+
+**Alternativen:**
+- Ein Basis-Mesh mit Morphs: einfacher, aber ein Asset und weniger eigener Stil.
+- Volumen/SDF-Charaktere: sehr flexibel, aber schwer schön zu machen.
+- Schwebende First-Person-Arme: einfacher, aber Körper und Reichweite passen nicht zum Modell,
+  das andere sehen.
+- Komplett prozedurale Animation: ohne Keyframes, aber sehr schwer gut aussehen zu lassen.
+- Proportionen nur optisch: fairer, aber Körper und Waffe hätten weniger Bedeutung.
+- Klettern überall (BOTW): passt zu großen Regionen, aber viel Aufwand für den Start.
+
+**Folgen:** Ohne Klettern müssen Steilhänge über Wege, Umwege oder Graben/Bauen überwindbar
+sein. Nahkampf im Multiplayer braucht Lag-Kompensation auf dem Server (Phase 6). Clipping und
+Kamera-Stabilisierung sind bei First-Person mit echtem Körper eigene Aufgaben.
