@@ -12,7 +12,8 @@
 //! `TERRAFORGE_SPAWN_X/Z`, `TERRAFORGE_CAM_Y`, `TERRAFORGE_WALK`, `TERRAFORGE_AUTOPILOT`,
 //! `TERRAFORGE_NO_FOG`, `TERRAFORGE_FPS_CAP`, `TERRAFORGE_SHOT`, `TERRAFORGE_SHOT_AFTER`,
 //! `TERRAFORGE_SECRET_SEED` (geheimer Untergrund-Seed; ohne: unsicherer Entwickler-Seed),
-//! `TERRAFORGE_CAVE_RADIUS`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW` (Grad), `TERRAFORGE_HEADLAMP`.
+//! `TERRAFORGE_CAVE_RADIUS`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW` (Grad), `TERRAFORGE_HEADLAMP`,
+//! `TERRAFORGE_FAR` (0 = ohne Fernterrain).
 
 mod controls;
 mod devtools;
@@ -78,6 +79,7 @@ fn main() {
             devtools::DevToolsPlugin,
         ))
         .add_systems(Startup, scene::setup_scene)
+        .add_systems(Update, scene::water_follows_camera)
         .add_systems(Startup, move || {
             // Hier statt in main(): vor App::run ist Bevys Logging noch nicht aktiv.
             if dev_seed {

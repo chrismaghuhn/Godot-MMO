@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::controls::WalkMode;
-use crate::streaming::{CaveChunk, CaveJobs, ColumnJobs, ColumnMap, TerrainChunk, Tree};
+use crate::streaming::{CaveChunk, CaveJobs, ColumnJobs, ColumnMap, FarTileMarker, TerrainChunk, Tree};
 use crate::WorldRes;
 
 pub struct OverlayPlugin;
@@ -52,6 +52,7 @@ struct EntityCounts<'w, 's> {
     trees: Query<'w, 's, (), With<Tree>>,
     terrain: Query<'w, 's, (), With<TerrainChunk>>,
     caves: Query<'w, 's, (), With<CaveChunk>>,
+    far: Query<'w, 's, (), With<FarTileMarker>>,
 }
 
 /// Bevys Standardschrift (Fira Mono, Teilmenge) hat keine Umlaute, Biom-Namen brauchen sie (#39).
@@ -129,7 +130,7 @@ fn perf_overlay(
 
     text.0 = format!(
         "FPS {:>4.0}   Frame {:>5.2} ms   p95 {:>5.2} ms   max {:>5.2} ms\n\
-         Spalten {:>3}   3D-Chunks {:>4} (Höhlen {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Seed {}\n\
+         Spalten {:>3}   3D-Chunks {:>4} (Höhlen {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Fern {:>3}   Seed {}\n\
          X {:>7.1}   Y {:>6.1}   Z {:>7.1}   {}   [F3]\n\
          {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}",
         fps,
@@ -143,6 +144,7 @@ fn perf_overlay(
         ctx.jobs.ready_count(),
         ctx.cave_jobs.pending_count(),
         counts.trees.iter().count(),
+        counts.far.iter().count(),
         ctx.world.0.cfg.seed,
         position.x,
         position.y,

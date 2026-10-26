@@ -2,12 +2,14 @@
 //!
 //! - `columns`: Spalten im Sichtradius; pro Spalte die Oberflächen-Chunks und Bäume
 //! - `caves`:   reine Höhlen-Chunks unter der Oberfläche, nur nahe der Kamera (#4)
+//! - `far`:     grobes Fernterrain bis ~3,5 km (#33)
 //!
 //! Die Spalten legen ihre Höhendaten im `ColumnCache` ab. Daraus entscheidet das
 //! Höhlen-Streaming ohne Neuberechnung, welche Chunks unter der Oberfläche liegen.
 
 mod caves;
 mod columns;
+mod far;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,6 +19,7 @@ use terraforge_core::volume::{self, ColumnData};
 
 pub use caves::{CaveChunk, CaveJobs};
 pub use columns::{ColumnJobs, ColumnMap};
+pub use far::{FAR_VIEW, FarTileMarker};
 
 pub const CHUNK_SIZE: f32 = volume::CHUNK_SIZE as f32;
 
@@ -30,7 +33,8 @@ impl Plugin for StreamingPlugin {
             .insert_resource(caves::CaveSettings::from_env())
             .init_resource::<caves::CaveMap>()
             .init_resource::<CaveJobs>()
-            .add_systems(Update, (columns::stream_columns, caves::stream_caves).chain());
+            .insert_resource(far::FarState::from_env())
+            .add_systems(Update, (columns::stream_columns, caves::stream_caves, far::stream_far).chain());
     }
 }
 
