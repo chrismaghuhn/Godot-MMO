@@ -18,13 +18,13 @@ use bevy::{
 };
 
 use terraforge_core::{
-    BiomeRef, FamilyKind, WorldGen,
+    WorldGen,
+    mesh::ChunkMesh,
     vegetation::{TreeGeo, TreePlacement, TreeStyle, build_tree_geometry, plan_trees},
+    volume::{self, ColumnData, DensityChunk},
 };
 
-const CHUNK_CELLS: usize = 32;
-const CHUNK_SAMPLES: usize = CHUNK_CELLS + 3;
-const CHUNK_SIZE: f32 = CHUNK_CELLS as f32;
+const CHUNK_SIZE: f32 = volume::CHUNK_SIZE as f32;
 const CHUNK_JOBS_IN_FLIGHT: usize = 8;
 const CHUNKS_READY_PER_FRAME: usize = 3;
 const CHUNK_DESPAWNS_PER_FRAME: usize = 4;
@@ -54,9 +54,11 @@ struct AutoPilot(f32);
 #[derive(Resource, Default)]
 struct ChunkMap(HashMap<IVec2, Entity>);
 
+/// Ergebnis eines Spalten-Jobs: alle 3D-Chunks mit Oberfläche in dieser Spalte.
 struct ChunkBuild {
     position: IVec2,
-    mesh: Mesh,
+    /// (Chunk-Höhe, Mesh) für jeden 3D-Chunk mit Oberfläche.
+    meshes: Vec<(i32, Mesh)>,
     trees: Vec<TreePlacement>,
 }
 
@@ -68,6 +70,10 @@ struct ChunkJobs {
 
 #[derive(Component)]
 struct Tree;
+
+/// Ein 3D-Terrain-Chunk (32³) mit Mesh.
+#[derive(Component)]
+struct TerrainChunk;
 
 #[derive(Component)]
 struct PerfOverlay;
@@ -306,6 +312,7 @@ fn perf_overlay(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     trees: Query<(), With<Tree>>,
+    terrain: Query<(), With<TerrainChunk>>,
     camera: Query<&Transform, With<Camera3d>>,
     mut overlay: Query<(&mut Text, &mut TextColor, &mut Visibility), With<PerfOverlay>>,
     mut ctx: PerfContext,
@@ -349,7 +356,7 @@ fn perf_overlay(
 
     text.0 = format!(
         "FPS {:>4.0}   Frame {:>5.2} ms   p95 {:>5.2} ms   max {:>5.2} ms\n\
-         Chunks {:>3}   Jobs {:>1}+{:<1}   Trees {:>5}   Seed {}\n\
+         Spalten {:>3}   3D-Chunks {:>4}   Jobs {:>1}+{:<1}   Trees {:>5}   Seed {}\n\
          X {:>7.1}   Y {:>6.1}   Z {:>7.1}   {}   [F3]\n\
          {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}",
         fps,
@@ -357,6 +364,7 @@ fn perf_overlay(
         p95,
         max,
         ctx.chunks.0.len(),
+        terrain.iter().count(),
         ctx.jobs.pending.len(),
         ctx.jobs.ready.len(),
         trees.iter().count(),
@@ -673,15 +681,22 @@ fn stream_chunks(
     for (position, _) in missing.into_iter().take(slots) {
         let world = Arc::clone(&ctx.world.0);
         let task = AsyncComputeTaskPool::get().spawn(async move {
-            let samples = sample_chunk(&world, position.x, position.y);
-            let mesh = build_terrain_mesh(&world, &samples);
+            let column = ColumnData::sample(&world, position.x, position.y);
+            let meshes = column
+                .surface_chunks()
+                .filter_map(|chunk_y| {
+                    let density = DensityChunk::from_column(&column, chunk_y);
+                    let mesh = ChunkMesh::build(&world, &column, &density);
+                    (!mesh.is_empty()).then(|| (chunk_y, chunk_mesh_to_bevy(mesh)))
+                })
+                .collect();
             let mut trees = plan_trees(
                 world.cfg.seed,
                 world.cfg.sea_level,
                 position.x,
                 position.y,
-                &samples.heights,
-                &samples.biomes,
+                &column.heights,
+                &column.biomes,
             );
             trees.retain(|tree| {
                 let world_x = position.x as f32 * CHUNK_SIZE + tree.position.x;
@@ -690,7 +705,7 @@ fn stream_chunks(
             });
             ChunkBuild {
                 position,
-                mesh,
+                meshes,
                 trees,
             }
         });
@@ -707,19 +722,31 @@ fn insert_chunk(
 ) {
     let ChunkBuild {
         position,
-        mesh,
+        meshes: chunk_meshes,
         trees,
     } = build;
+    // Die Spalte ist der Eltern-Knoten: Streaming und Despawn laufen weiter pro Spalte,
+    // die Terrain-Meshes darunter sind echte 3D-Chunks.
     let mut entity = commands.spawn((
-        Mesh3d(meshes.add(mesh)),
-        MeshMaterial3d(assets.terrain_material.clone()),
         Transform::from_xyz(
             position.x as f32 * CHUNK_SIZE,
             0.0,
             position.y as f32 * CHUNK_SIZE,
         ),
+        Visibility::default(),
     ));
     let chunk_entity = entity.id();
+
+    entity.with_children(|parent| {
+        for (chunk_y, mesh) in chunk_meshes {
+            parent.spawn((
+                TerrainChunk,
+                Mesh3d(meshes.add(mesh)),
+                MeshMaterial3d(assets.terrain_material.clone()),
+                Transform::from_xyz(0.0, chunk_y as f32 * CHUNK_SIZE, 0.0),
+            ));
+        }
+    });
 
     if !trees.is_empty() {
         entity.with_children(|parent| {
@@ -739,87 +766,23 @@ fn insert_chunk(
     chunks.0.insert(position, chunk_entity);
 }
 
-struct ChunkSamples {
-    heights: [[f32; CHUNK_SAMPLES]; CHUNK_SAMPLES],
-    biomes: [[BiomeRef; CHUNK_SAMPLES]; CHUNK_SAMPLES],
-}
-
-fn sample_chunk(world: &WorldGen, chunk_x: i32, chunk_z: i32) -> ChunkSamples {
-    let default_biome = BiomeRef {
-        kind: FamilyKind::Grassland,
-        variant: 0,
-    };
-    let mut samples = ChunkSamples {
-        heights: [[0.0; CHUNK_SAMPLES]; CHUNK_SAMPLES],
-        biomes: [[default_biome; CHUNK_SAMPLES]; CHUNK_SAMPLES],
-    };
-
-    for sample_z in 0..CHUNK_SAMPLES {
-        for sample_x in 0..CHUNK_SAMPLES {
-            let local_x = sample_x as f32 - 1.0;
-            let local_z = sample_z as f32 - 1.0;
-            let world_x = chunk_x as f32 * CHUNK_SIZE + local_x;
-            let world_z = chunk_z as f32 * CHUNK_SIZE + local_z;
-            let sample = world.sample(world_x, world_z);
-            samples.heights[sample_z][sample_x] = sample.height;
-            let interior = (1..CHUNK_SAMPLES - 1).contains(&sample_x)
-                && (1..CHUNK_SAMPLES - 1).contains(&sample_z);
-            if interior {
-                samples.biomes[sample_z][sample_x] = world.biome_at(&sample);
-            }
-        }
-    }
-
-    samples
-}
-
-fn build_terrain_mesh(world: &WorldGen, samples: &ChunkSamples) -> Mesh {
-    const MESH_VERTS: usize = CHUNK_CELLS + 1;
-    let heights = &samples.heights;
-
-    let vertex_count = MESH_VERTS * MESH_VERTS;
-    let mut positions = Vec::with_capacity(vertex_count);
-    let mut normals = Vec::with_capacity(vertex_count);
-    let mut vertex_colors = Vec::with_capacity(vertex_count);
-
-    for z in 0..MESH_VERTS {
-        for x in 0..MESH_VERTS {
-            let sx = x + 1;
-            let sz = z + 1;
-            positions.push([x as f32, heights[sz][sx], z as f32]);
-            let left = heights[sz][sx - 1];
-            let right = heights[sz][sx + 1];
-            let down = heights[sz - 1][sx];
-            let up = heights[sz + 1][sx];
-            let normal = Vec3::new(left - right, 2.0, down - up).normalize();
-            normals.push([normal.x, normal.y, normal.z]);
-
-            let biome = samples.biomes[sz][sx];
-            let rgb = world.apply_altitude(world.biome_color(biome), heights[sz][sx]);
+fn chunk_mesh_to_bevy(mesh: ChunkMesh) -> Mesh {
+    let colors: Vec<[f32; 4]> = mesh
+        .colors
+        .iter()
+        .map(|&rgb| {
             let linear = srgb_to_linear(rgb);
-            vertex_colors.push([linear[0], linear[1], linear[2], 1.0]);
-        }
-    }
-
-    let mut indices = Vec::with_capacity(CHUNK_CELLS * CHUNK_CELLS * 6);
-    for z in 0..CHUNK_CELLS {
-        for x in 0..CHUNK_CELLS {
-            let a = (z * MESH_VERTS + x) as u32;
-            let b = a + 1;
-            let c = a + MESH_VERTS as u32;
-            let d = c + 1;
-            indices.extend_from_slice(&[a, c, b, b, c, d]);
-        }
-    }
-
+            [linear[0], linear[1], linear[2], 1.0]
+        })
+        .collect();
     Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, vertex_colors)
-    .with_inserted_indices(Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mesh.positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mesh.normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_indices(Indices::U32(mesh.indices))
 }
 
 fn tree_mesh_index(style: TreeStyle, variant: usize) -> usize {

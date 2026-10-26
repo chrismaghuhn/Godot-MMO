@@ -1,4 +1,5 @@
 pub mod biome;
+pub mod mesh;
 pub mod noise;
 pub mod vegetation;
 pub mod volume;
