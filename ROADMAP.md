@@ -41,7 +41,12 @@ Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-V
 - [x] Höhlen: Kavernen + Tunnel + Eingänge an der Oberfläche: #4
   - [ ] Kleine Höhlenfetzen: #41
   - [ ] ShellHeights pro Spalte cachen: #42
-- [ ] Gestein pro Voxel: Schichten und Erzadern: #5
+- [ ] Gestein und Erze (D-013): #5
+  - [ ] Material-Kanal pro Voxel + materials.ron: #43
+  - [ ] Gesteinsschichten und Oberflächenmaterial (öffentlich): #44
+  - [ ] Provinzen, Erz-Vorkommen, Reinheit (geheim): #45
+  - [ ] Sichtbarkeits-Filter (Erze erst zeigen, wenn sie freiliegen): #46
+  - [ ] Viewer: Materialfarben, Röntgenmodus, Statistik: #47
 - [ ] Graben/Bauen: Änderungen pro Chunk speichern, Chunk neu vermaschen: #6
 - [ ] Bäume auf die Volumen-Oberfläche setzen: #7
 - [ ] Cave Culling (Sichtbarkeit über Chunk-Verbindungen, D-006): #8
@@ -63,6 +68,7 @@ Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 - [ ] Biom-Varianten mit Daten (Bedingungen, Vegetation, Ressourcen), Wahl nach Bedingungen statt zufällig: #16
 - [ ] Erste 30-40 Biome vollständig ausbauen (D-009): #17
 - [ ] Abbauen + einfaches Inventar: #18
+- [ ] Oberflächen-Hinweise auf Erze (vom Server gesteuert): #48
 - [ ] Speichern von Weltänderungen (Delta auf den Seed): #19
 
 ## Phase 4: Crafting

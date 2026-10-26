@@ -263,3 +263,38 @@ die eigene Annahme, nicht die eigentliche Eigenschaft.
 **Folgen:** Mehr Aufwand pro Feature, dafür werden Fehler gefunden, bevor andere Teile darauf
 aufbauen. Ergebnisse des Reviews werden im Issue und, wenn sie Entscheidungen betreffen, hier
 festgehalten.
+
+## D-013: Gestein und Erze, öffentlich vs. geheim, regionale Provinzen
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** #5 (Gestein und Erze) ist die Grundlage für Ressourcen, Crafting und Handel.
+Erze sind das Wertvollste in der Welt; ihre Positionen dürfen Clients nicht vorab kennen (D-005).
+
+**Entscheidung:**
+- **Öffentlich** (Client erzeugt selbst): Gesteinsschichten und Oberflächenmaterial (Erde, Sand,
+  Kies, Schnee). Sie sind an Klippen, Hängen und Höhleneingängen sichtbar und müssen im Client
+  korrekt aussehen. Sie verraten höchstens Wahrscheinlichkeiten, keine Positionen.
+- **Geheim** (nur Server, Feature `underground`): Erze, ihre Reinheit, die Provinz-Einteilung,
+  Oberflächen-Hinweise.
+- **Materialien zum Start:** reale Erze (Kohle, Kupfer, Zinn, Eisen, Silber, Gold) plus
+  Spezialmaterialien passend zu den Biomen (Quarz/Kristall, Obsidian, Schwefel, Magnetit, Zinnober).
+  Datengetrieben in `core/assets/materials.ron`.
+- **Stark regional:** Die Welt ist in geologische Provinzen geteilt (≈ 0,6-1,2 km). Jede Provinz
+  hat nur wenige Erzarten, mindestens aber ein Grundmetall. Spezialmaterialien nur in passenden
+  Biomen/Regionen (z. B. Obsidian/Schwefel vulkanisch, Quarz in Kristallgebieten).
+- **Formen:** Nester (Klumpen), Adern (lang, dünn) und Seifen (angeschwemmt in Flusssand).
+  Keine Flöze; Kohle kommt als Nester vor.
+- **Reinheit** als langsam variierendes Feld pro Erz und Provinz (Grundlage für #15).
+- **Schutzregel auch für Material:** Erze dürfen das Material von Zellen, die Luft berühren,
+  nicht verändern (gleiches Argument wie bei der Höhlen-Schale). Seifengold liegt deshalb *im*
+  Sand unter der sichtbaren Schicht.
+- **Oberflächen-Hinweise** (verfärbtes Gestein, Aufschlüsse) gibt es, aber nur vom Server
+  gesteuert, wie Höhleneingänge.
+- Material-ID pro Voxel als `u16` (Platz für spätere, von Spielern gebaute Materialien).
+
+**Alternativen:** Erze überall (kaum Handel), Gestein geheim (Client könnte Klippen nicht
+korrekt darstellen), Flöze (bewusst weggelassen, um die Formen überschaubar zu halten).
+
+**Folgen:** Aufteilung in Teil-Issues (5a-5f). Die Sichtbarkeits-Filterung (Erze erst senden,
+wenn sie freiliegen) wird im Core vorbereitet und in #26 genutzt.
