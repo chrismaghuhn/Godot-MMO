@@ -462,3 +462,77 @@ fn settled_trees_stand_on_the_volume_surface() {
     assert!(removed_by_caves > 0, "Testgebiet deckt keinen Höhleneingang unter Bäumen ab");
     assert!(kept * 100 >= planned * 90, "zu viele Bäume entfernt: {kept}/{planned}");
 }
+
+/// #41: Kaum winzige, abgetrennte Hohlräume. Vorher zerfielen Tunnel in Perlenketten: 89 % der
+/// vollständig erfassten Hohlräume waren < 64 m³ (10,7 % des Volumens).
+#[test]
+fn caves_have_few_tiny_fragments() {
+    use std::collections::VecDeque;
+    let world = WorldGen::new(42);
+    let (mut small_volume, mut total_volume) = (0usize, 0usize);
+    for secret in [1u64, 2] {
+        let underground = Underground::new(SecretSeed::from_u64(secret), &world.cfg);
+        for (bx, bz) in [(0, 0), (40, -20), (-30, 25), (15, 60)] {
+            let (nx, ny, nz) = (4usize, 3usize, 4usize);
+            let (sx, sy, sz) = (nx * 32, ny * 32, nz * 32);
+            let mut air = vec![false; sx * sy * sz];
+            for cz in 0..nz {
+                for cx in 0..nx {
+                    let column = ColumnData::sample(&world, bx + cx as i32, bz + cz as i32);
+                    for cy in 0..ny {
+                        let chunk = underground.materials_chunk(&world, &column, -4 + cy as i32);
+                        for z in 0..32 {
+                            for y in 0..32 {
+                                for x in 0..32 {
+                                    let world_y = (-4 + cy as i32) * 32 + y;
+                                    if chunk.get(x, y, z) <= 0.0 && (world_y as f32) < column.height(x, z) - 6.0 {
+                                        air[((cz * 32 + z as usize) * sy + cy * 32 + y as usize) * sx + cx * 32 + x as usize] = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let mut seen = vec![false; air.len()];
+            for start in 0..air.len() {
+                if !air[start] || seen[start] {
+                    continue;
+                }
+                let mut queue = VecDeque::from([start]);
+                seen[start] = true;
+                let (mut volume, mut cut) = (0usize, false);
+                while let Some(i) = queue.pop_front() {
+                    volume += 1;
+                    let (x, y, z) = (i % sx, (i / sx) % sy, i / (sx * sy));
+                    cut |= x == 0 || y == 0 || z == 0 || x + 1 == sx || y + 1 == sy || z + 1 == sz;
+                    let neighbours = [
+                        (x > 0).then(|| i - 1),
+                        (x + 1 < sx).then(|| i + 1),
+                        (y > 0).then(|| i - sx),
+                        (y + 1 < sy).then(|| i + sx),
+                        (z > 0).then(|| i - sx * sy),
+                        (z + 1 < sz).then(|| i + sx * sy),
+                    ];
+                    for j in neighbours.into_iter().flatten() {
+                        if air[j] && !seen[j] {
+                            seen[j] = true;
+                            queue.push_back(j);
+                        }
+                    }
+                }
+                if cut {
+                    continue; // am Blockrand abgeschnitten
+                }
+                total_volume += volume;
+                if volume < 64 {
+                    small_volume += volume;
+                }
+            }
+        }
+    }
+    let share = small_volume as f64 / total_volume.max(1) as f64;
+    eprintln!("Fetzen-Anteil am Hohlraum: {:.2} %", share * 100.0);
+    assert!(total_volume > 2000, "zu wenig Hohlraum im Testgebiet: {total_volume}");
+    assert!(share < 0.03, "Fetzen-Anteil {share:.3}");
+}

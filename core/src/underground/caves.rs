@@ -2,7 +2,8 @@
 //!
 //! - **Kavernen** ("Cheese"): 3D-Noise, hohl wo der Wert über einer Schwelle liegt.
 //! - **Tunnel** ("Spaghetti"): zwei 3D-Noises, hohl wo beide nahe 0 sind (Schnittlinie).
-//! - **Regionen**: 2D-Noise, Gebiete mit vielen bzw. ohne Höhlen.
+//! - **Regionen**: 2D-Noise, Gebiete mit vielen bzw. ohne Kavernen. Tunnel laufen überall durch
+//!   (#41: von Regionen ausgeblendete, zu dünne Tunnel zerfielen in winzige Hohlraum-Fetzen).
 //! - **Eingänge**: 2D-Noise, nur an Land; dort dürfen Höhlen die Oberfläche anschneiden.
 //!
 //! Die Höhlen-Dichte wird nur auf einem 4-m-Gitter berechnet und trilinear interpoliert.
@@ -28,8 +29,8 @@ pub const SURFACE_SHELL: f32 = 4.0;
 /// Übergangszone unter der Schale, in der Höhlen langsam auf volle Größe anwachsen.
 const SHELL_FADE: f32 = 8.0;
 
-const CHEESE_THRESHOLD: f32 = 0.42;
-const TUNNEL_RADIUS: f32 = 0.11;
+const CHEESE_THRESHOLD: f32 = 0.50;
+const TUNNEL_RADIUS: f32 = 0.14;
 /// Skalierung auf ungefähr "Meter", damit die Dichte zur Oberfläche (1 pro Meter) passt.
 const CHEESE_SCALE: f32 = 40.0;
 const TUNNEL_SCALE: f32 = 22.0;
@@ -52,8 +53,8 @@ impl CaveNoise {
     pub(super) fn new(seed: &SecretSeed) -> Self {
         Self {
             cheese: Layer::new(seed.layer(0xC4EE5E), 0.011, 2),
-            tunnel_a: Layer::new(seed.layer(0x7A), 0.018, 1),
-            tunnel_b: Layer::new(seed.layer(0x7B), 0.018, 1),
+            tunnel_a: Layer::new(seed.layer(0x7A), 0.009, 1),
+            tunnel_b: Layer::new(seed.layer(0x7B), 0.009, 1),
             region: Layer::new(seed.layer(0x4E6), 0.0030, 2),
             entrance: Layer::new(seed.layer(0xE7), 0.0090, 2),
         }
@@ -70,7 +71,7 @@ impl CaveNoise {
         let tunnel_density = ((a * a + b * b).sqrt() - TUNNEL_RADIUS) * TUNNEL_SCALE;
 
         let deep = (1.0 - smoothstep(CAVE_MIN_Y, CAVE_MIN_Y + 20.0, y)) * DEEP_SEAL;
-        cheese_density.min(tunnel_density) + (1.0 - region) * REGION_SEAL + deep
+        (cheese_density + (1.0 - region) * REGION_SEAL).min(tunnel_density) + deep
     }
 
     fn region(&self, x: f32, z: f32) -> f32 {
