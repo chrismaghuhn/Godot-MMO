@@ -25,6 +25,11 @@ pub const CHUNK_SIZE: f32 = volume::CHUNK_SIZE as f32;
 
 pub struct StreamingPlugin;
 
+/// Systeme des Streamings. Änderungen an der Welt (Graben, Fällen) laufen davor, damit Neubauten,
+/// die im selben Frame eingefügt werden, sie schon kennen.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StreamingSet;
+
 impl Plugin for StreamingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ColumnMap>()
@@ -35,7 +40,10 @@ impl Plugin for StreamingPlugin {
             .init_resource::<CaveJobs>()
             .init_resource::<DirtyChunks>()
             .insert_resource(far::FarState::from_env())
-            .add_systems(Update, (columns::stream_columns, caves::stream_caves, far::stream_far).chain());
+            .add_systems(
+                Update,
+                (columns::stream_columns, caves::stream_caves, far::stream_far).chain().in_set(StreamingSet),
+            );
     }
 }
 

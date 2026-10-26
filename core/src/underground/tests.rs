@@ -424,8 +424,9 @@ fn settled_trees_stand_on_the_volume_surface() {
                 tree.position.y,
                 (chunk_z * CHUNK_SIZE) as f32 + tree.position.z,
             );
-            let with_caves = settle_tree(root, |v| lookup(&mut secret, true, v));
-            let without = settle_tree(root, |v| lookup(&mut public, false, v));
+            let plan = |x: i32, z: i32| world.column_height(x as f32, z as f32);
+            let with_caves = settle_tree(root, plan, |v| lookup(&mut secret, true, v));
+            let without = settle_tree(root, plan, |v| lookup(&mut public, false, v));
             assert!(without.is_some(), "Baum ohne Höhlen entfernt bei {root}");
             let Some(y) = with_caves else {
                 removed_by_caves += 1;

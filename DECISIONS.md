@@ -426,4 +426,8 @@ gegrabenen Löchern (#7). Bäume sollen später gefällt werden (Axt, #21) und d
   keine Informationen über entfernte Bäume über den Radius hinaus gesendet werden, in dem Chunks
   ohnehin aufgedeckt sind – sonst verraten sie Höhleneingänge.
 
-**Folgen:** Mit Höhlen entfallen ≈ 0,1 % der Bäume (an großen Eingängen ≈ 3 %), ohne Höhlen keiner.
+- Jede Ecke der Baum-Zelle wird mit ihrer eigenen geplanten Höhe verglichen (± 1,5 m).
+
+**Folgen:** Mit Höhlen entfallen ≈ 0,1 % der Bäume (an großen Eingängen ≈ 3 %), ohne Höhlen und
+Spieler-Änderungen keiner (geprüft über 33.119 Bäume; erste Fassung verglich mit der Wurzelhöhe und
+entfernte an Hängen 0,04 %).

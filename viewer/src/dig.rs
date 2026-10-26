@@ -21,7 +21,7 @@ use terraforge_core::{
     volume::{CHUNK_SIZE, ChunkKind, ColumnData, DensityChunk},
 };
 
-use crate::streaming::{ColumnCache, DirtyChunks, Tree};
+use crate::streaming::{ColumnCache, DirtyChunks, StreamingSet, Tree};
 use crate::{EditsRes, UndergroundRes, WorldRes, env_parse};
 
 const DIG_RADIUS: f32 = 2.0;
@@ -39,7 +39,7 @@ impl Plugin for DigPlugin {
             .init_resource::<VoxelCache>()
             .insert_resource(AutoDig { remaining: env_parse("TERRAFORGE_AUTODIG").unwrap_or(0), timer: 0.0 })
             .add_systems(Startup, spawn_crosshair)
-            .add_systems(Update, (dig_input, fell_tree));
+            .add_systems(Update, (dig_input, fell_tree).before(StreamingSet));
     }
 }
 
@@ -280,7 +280,8 @@ fn fell_tree(
         return;
     };
     if edits.0.write().expect("Edits-Lock vergiftet").fell_tree(id) {
-        commands.entity(entity).despawn();
+        // Kann schon mit seiner Spalte verschwinden; dann kein Fehler.
+        commands.entity(entity).try_despawn();
         status.last = "Baum gefällt".into();
     }
 }

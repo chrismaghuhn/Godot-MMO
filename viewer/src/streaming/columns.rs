@@ -278,7 +278,9 @@ pub(super) fn stream_columns(
                 }
                 // Lokale Koordinaten: Voxel x/z liegen im eigenen Chunk (0..=32).
                 let root = Vec3::new(tree.position.x, tree.position.y, tree.position.z);
-                match settle_tree(root, |v| density(v + origin.as_ivec3())) {
+                // Geplante Höhe an den Ecken aus der Spalte (lokal 0..=32).
+                let plan = |x: i32, z: i32| column.height(x, z);
+                match settle_tree(root, plan, |v| density(v + origin.as_ivec3())) {
                     Some(y) => {
                         tree.position.y = y;
                         true
