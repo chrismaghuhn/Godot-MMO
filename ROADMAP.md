@@ -42,7 +42,7 @@ Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-V
   - [ ] Kleine Höhlenfetzen: #41
   - [ ] ShellHeights pro Spalte cachen: #42
 - [ ] Gestein und Erze (D-013): #5
-  - [ ] Material-Kanal pro Voxel + materials.ron: #43
+  - [x] Material-Kanal pro Voxel + materials.ron: #43
   - [ ] Gesteinsschichten und Oberflächenmaterial (öffentlich): #44
   - [ ] Provinzen, Erz-Vorkommen, Reinheit (geheim): #45
   - [ ] Sichtbarkeits-Filter (Erze erst zeigen, wenn sie freiliegen): #46
