@@ -4,6 +4,7 @@
 // vergeben, nur neue hinzufügen. ID 0 ist für Luft reserviert und steht nicht in dieser Datei.
 //
 // Kategorien: Soil (Boden), Rock (Gestein), Ore (Erz), Special (Spezialmaterial).
+// color: natürliche Farbe; accent (optional, `Some((r, g, b))`): Sprenkel/Glanz für Erze.
 // hardness: grob nach Mohs (1-10); density: g/cm³ (reale Richtwerte).
 // Ob ein Material öffentlich erzeugt werden darf, bestimmt nicht diese Datei, sondern der
 // Generator (Erze nur im geheimen Untergrund).
@@ -29,20 +30,20 @@
     (id: 15, key: "marble", name: "Marmor", category: Rock, color: (222, 220, 214), hardness: 3.0, density: 2.7),
 
     // Erze
-    (id: 30, key: "coal", name: "Kohle", category: Ore, color: (36, 34, 34), hardness: 2.0, density: 1.4),
-    (id: 31, key: "copper_ore", name: "Kupfererz", category: Ore, color: (82, 140, 116), hardness: 3.5, density: 4.0),
-    (id: 32, key: "tin_ore", name: "Zinnerz", category: Ore, color: (122, 112, 104), hardness: 6.5, density: 6.9),
-    (id: 33, key: "iron_ore", name: "Eisenerz", category: Ore, color: (140, 72, 52), hardness: 5.5, density: 5.2),
-    (id: 34, key: "silver_ore", name: "Silbererz", category: Ore, color: (168, 172, 180), hardness: 2.5, density: 7.2),
-    (id: 35, key: "gold_ore", name: "Golderz", category: Ore, color: (212, 176, 64), hardness: 3.0, density: 8.0),
+    (id: 30, key: "coal", name: "Kohle", category: Ore, color: (36, 34, 34), accent: Some((90, 90, 104)), hardness: 2.0, density: 1.4),
+    (id: 31, key: "copper_ore", name: "Kupfererz", category: Ore, color: (82, 140, 116), accent: Some((40, 200, 150)), hardness: 3.5, density: 4.0),
+    (id: 32, key: "tin_ore", name: "Zinnerz", category: Ore, color: (122, 112, 104), accent: Some((200, 208, 218)), hardness: 6.5, density: 6.9),
+    (id: 33, key: "iron_ore", name: "Eisenerz", category: Ore, color: (140, 72, 52), accent: Some((200, 90, 40)), hardness: 5.5, density: 5.2),
+    (id: 34, key: "silver_ore", name: "Silbererz", category: Ore, color: (168, 172, 180), accent: Some((236, 240, 250)), hardness: 2.5, density: 7.2),
+    (id: 35, key: "gold_ore", name: "Golderz", category: Ore, color: (212, 176, 64), accent: Some((255, 214, 40)), hardness: 3.0, density: 8.0),
     // Seifengold: goldhaltiger Sand, liegt in Flussablagerungen unter der sichtbaren Schicht.
-    (id: 36, key: "gold_sand", name: "Goldsand", category: Ore, color: (220, 190, 120), hardness: 1.5, density: 2.4),
+    (id: 36, key: "gold_sand", name: "Goldsand", category: Ore, color: (220, 190, 120), accent: Some((255, 200, 40)), hardness: 1.5, density: 2.4),
 
     // Spezialmaterialien (an Biome/Regionen gebunden)
-    (id: 50, key: "quartz", name: "Quarz", category: Special, color: (226, 232, 240), hardness: 7.0, density: 2.65),
-    (id: 51, key: "obsidian", name: "Obsidian", category: Special, color: (28, 24, 36), hardness: 5.5, density: 2.4),
-    (id: 52, key: "sulfur", name: "Schwefel", category: Special, color: (226, 206, 60), hardness: 2.0, density: 2.1),
-    (id: 53, key: "magnetite", name: "Magnetit", category: Special, color: (48, 48, 54), hardness: 6.0, density: 5.2),
-    (id: 54, key: "cinnabar", name: "Zinnober", category: Special, color: (180, 40, 36), hardness: 2.5, density: 8.1),
+    (id: 50, key: "quartz", name: "Quarz", category: Special, color: (226, 232, 240), accent: Some((255, 255, 255)), hardness: 7.0, density: 2.65),
+    (id: 51, key: "obsidian", name: "Obsidian", category: Special, color: (28, 24, 36), accent: Some((110, 60, 170)), hardness: 5.5, density: 2.4),
+    (id: 52, key: "sulfur", name: "Schwefel", category: Special, color: (226, 206, 60), accent: Some((255, 244, 90)), hardness: 2.0, density: 2.1),
+    (id: 53, key: "magnetite", name: "Magnetit", category: Special, color: (48, 48, 54), accent: Some((120, 130, 170)), hardness: 6.0, density: 5.2),
+    (id: 54, key: "cinnabar", name: "Zinnober", category: Special, color: (180, 40, 36), accent: Some((240, 40, 40)), hardness: 2.5, density: 8.1),
   ],
 )

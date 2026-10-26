@@ -54,7 +54,7 @@ impl ChunkMesh {
                 let biome = column.biome(local_x, local_z);
                 let surface = world.apply_altitude(world.biome_color(biome), world_y);
                 let depth = column.height(local_x, local_z) - world_y;
-                let below = world.materials.color(material);
+                let below = world.materials.display_color(material);
                 blend_rgb(surface, below, smoothstep(1.5, 4.0, depth))
             })
             .collect();

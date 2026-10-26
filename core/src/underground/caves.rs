@@ -160,7 +160,7 @@ impl ShellHeights {
     }
 
     #[inline]
-    fn lowest(&self, x: i32, z: i32) -> f32 {
+    pub(super) fn lowest(&self, x: i32, z: i32) -> f32 {
         self.values[(z - SAMPLE_MIN) as usize * SHELL_COLUMNS + (x - SAMPLE_MIN) as usize]
     }
 }

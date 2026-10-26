@@ -22,6 +22,17 @@ impl SecretSeed {
         Self(mix(public_seed as u64 ^ 0x5EC2_E7D0_0D5E_ED00))
     }
 
+    /// Deterministischer Hash aus dem geheimen Seed und beliebigen Zahlen (z. B. Provinz-Zelle
+    /// plus Zweck). Grundlage für Zufallsentscheidungen wie "hat diese Provinz Gold?".
+    pub(super) fn hash(&self, parts: &[i64]) -> u64 {
+        parts.iter().fold(mix(self.0 ^ 0xA5A5_5A5A_C3C3_3C3C), |h, &part| mix(h ^ part as u64))
+    }
+
+    /// Wie `hash`, aber gleichverteilt in `0.0..1.0`.
+    pub(super) fn unit(&self, parts: &[i64]) -> f32 {
+        (self.hash(parts) >> 40) as f32 / (1u64 << 24) as f32
+    }
+
     /// Seed für eine Noise-Ebene des Untergrunds. Jede Ebene bekommt ein eigenes `salt`,
     /// damit Ebenen nicht korrelieren.
     pub fn layer(&self, salt: u64) -> i32 {
@@ -63,6 +74,18 @@ mod tests {
         assert_ne!(a.layer(1), a.layer(2));
         assert_ne!(a.layer(1), b.layer(1));
         assert_eq!(a.layer(7), SecretSeed::from_u64(1).layer(7));
+    }
+
+    #[test]
+    fn hash_is_deterministic_and_spread() {
+        let seed = SecretSeed::from_u64(5);
+        assert_eq!(seed.hash(&[1, 2, 3]), SecretSeed::from_u64(5).hash(&[1, 2, 3]));
+        assert_ne!(seed.hash(&[1, 2, 3]), seed.hash(&[1, 2, 4]));
+        assert_ne!(seed.hash(&[1, 2]), SecretSeed::from_u64(6).hash(&[1, 2]));
+        let values: Vec<f32> = (0..2000).map(|i| seed.unit(&[i, 7])).collect();
+        assert!(values.iter().all(|v| (0.0..1.0).contains(v)));
+        let mean = values.iter().sum::<f32>() / values.len() as f32;
+        assert!((0.45..0.55).contains(&mean), "ungleich verteilt: {mean}");
     }
 
     #[test]

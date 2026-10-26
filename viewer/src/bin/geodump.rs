@@ -1,6 +1,8 @@
-//! Geologie-Bilder zum Prüfen von #44 (und später Erzen):
+//! Geologie-Bilder zum Prüfen von #44 und #45:
 //! - Querschnitt: senkrechter Schnitt entlang x bei festem z (1 Pixel = 1 m), inkl. Höhlen
+//!   und Erzen (vollständiges Material, auch im massiven Fels)
 //! - Oberflächenkarte: Material direkt unter der Oberfläche (Boden bzw. freiliegender Fels)
+//! - Provinzkarte: geologische Provinzen, eingefärbt nach ihrem seltensten Erz
 //!
 //! Aufruf: `cargo run --release --bin geodump -- [seed] [z] [x_start] [breite] [karte_radius]`
 //! Höhlen kommen aus dem unsicheren Entwickler-Seed (nur Debug).
@@ -39,7 +41,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let map_path = format!("maps/geo_surface_{seed}.png");
     map.save(&map_path)?;
 
-    println!("geschrieben: {section_path}, {map_path}");
+    let provinces = province_map(&world, &underground, map_radius);
+    let provinces_path = format!("maps/geo_provinces_{seed}.png");
+    provinces.save(&provinces_path)?;
+
+    println!("geschrieben: {section_path}, {map_path}, {provinces_path}");
+    print_provinces(&world, &underground, map_radius);
     let total: usize = counts.values().sum();
     let mut rows: Vec<_> = counts.into_iter().collect();
     rows.sort_by_key(|row| std::cmp::Reverse(row.1));
@@ -69,14 +76,12 @@ fn cross_section(world: &WorldGen, underground: &Underground, slice_z: i32, x_st
         for py in 0..height as i32 {
             let y = Y_TOP - 1 - py;
             let (chunk_y, local_y) = (y.div_euclid(CHUNK_SIZE), y.rem_euclid(CHUNK_SIZE));
-            let chunk = chunks.entry((chunk_x, chunk_y, chunk_z)).or_insert_with(|| {
-                underground
-                    .density_chunk(world, column, chunk_y)
-                    .unwrap_or_else(|| DensityChunk::from_column(column, chunk_y))
-            });
+            let chunk = chunks
+                .entry((chunk_x, chunk_y, chunk_z))
+                .or_insert_with(|| underground.materials_chunk(world, column, chunk_y));
             let material = chunk.material(local_x, local_y, local_z);
             let color = if !material.is_air() {
-                world.materials.color(material)
+                world.materials.display_color(material)
             } else if (y as f32) < surface {
                 [10, 10, 14] // Höhle
             } else if (y as f32) < world.cfg.sea_level {
@@ -117,4 +122,58 @@ fn surface_map(world: &WorldGen, radius: i32) -> (RgbImage, HashMap<MaterialId, 
         }
     }
     (image, counts)
+}
+
+/// Provinzen in Draufsicht (8 m pro Pixel): Farbe des seltensten Erzes, Grenzen dunkel.
+fn province_map(world: &WorldGen, underground: &Underground, radius: i32) -> RgbImage {
+    let step = 8;
+    let size = (2 * radius / step) as u32;
+    let mut image = RgbImage::new(size, size);
+    let mut cache: HashMap<(i32, i32), [u8; 3]> = HashMap::new();
+    let mut ids = vec![(0, 0); (size * size) as usize];
+    for pz in 0..size as i32 {
+        for px in 0..size as i32 {
+            let (x, z) = ((-radius + px * step) as f32, (-radius + pz * step) as f32);
+            let province = underground.province_at(world, x, z);
+            ids[(pz as u32 * size + px as u32) as usize] = province.id;
+            let color = *cache.entry(province.id).or_insert_with(|| {
+                let rarest = province.deposits.first().map(|d| d.kind.material());
+                let base = rarest.map_or([128, 128, 128], |m| world.materials.display_color(m));
+                base.map(|c| ((c as u16 + 96) / 2) as u8)
+            });
+            image.put_pixel(px as u32, pz as u32, Rgb(color));
+        }
+    }
+    for pz in 1..size {
+        for px in 1..size {
+            let id = ids[(pz * size + px) as usize];
+            if id != ids[(pz * size + px - 1) as usize] || id != ids[((pz - 1) * size + px) as usize] {
+                image.put_pixel(px, pz, Rgb([20, 20, 24]));
+            }
+        }
+    }
+    image
+}
+
+/// Liste der Provinzen im Kartenbereich mit ihren Erzen.
+fn print_provinces(world: &WorldGen, underground: &Underground, radius: i32) {
+    let mut seen = std::collections::BTreeMap::new();
+    for z in (-radius..radius).step_by(64) {
+        for x in (-radius..radius).step_by(64) {
+            let province = underground.province_at(world, x as f32, z as f32);
+            seen.entry(province.id).or_insert(province);
+        }
+    }
+    println!("Provinzen im Kartenbereich ({}):", seen.len());
+    for province in seen.values() {
+        let ores: Vec<String> = province
+            .deposits
+            .iter()
+            .map(|d| {
+                let name = world.materials.get(d.kind.material()).map_or("?", |m| m.name.as_str());
+                format!("{name} (Menge {:.0} %, Reinheit {:.0} %)", d.abundance * 100.0, d.base_purity * 100.0)
+            })
+            .collect();
+        println!("  {:?}: {}", province.id, ores.join(", "));
+    }
 }

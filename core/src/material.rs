@@ -53,8 +53,12 @@ pub struct Material {
     /// Anzeigename.
     pub name: String,
     pub category: MaterialCategory,
-    /// sRGB.
+    /// Natürliche Grundfarbe (sRGB).
     pub color: [u8; 3],
+    /// Akzentfarbe für Sprenkel/Glanz (sRGB), vor allem für Erze, damit sie sich vom
+    /// Gestein abheben. Im Viewer eingemischt, später als Shader-Muster.
+    #[serde(default)]
+    pub accent: Option<[u8; 3]>,
     /// Grob nach Mohs (1-10).
     pub hardness: f32,
     /// g/cm³.
@@ -124,6 +128,18 @@ impl MaterialRegistry {
     pub fn color(&self, id: MaterialId) -> [u8; 3] {
         self.get(id).map_or([255, 0, 255], |material| material.color)
     }
+
+    /// Farbe für die Darstellung mit Vertex-Farben: Grundfarbe, bei Materialien mit
+    /// Akzent zur Hälfte mit der Akzentfarbe gemischt.
+    pub fn display_color(&self, id: MaterialId) -> [u8; 3] {
+        let Some(material) = self.get(id) else {
+            return [255, 0, 255];
+        };
+        match material.accent {
+            Some(accent) => std::array::from_fn(|i| ((material.color[i] as u16 + accent[i] as u16) / 2) as u8),
+            None => material.color,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -147,6 +163,9 @@ mod tests {
             assert!(registry.iter().any(|material| material.category == category), "{category:?} fehlt");
         }
         for material in registry.iter() {
+            if matches!(material.category, MaterialCategory::Ore | MaterialCategory::Special) {
+                assert!(material.accent.is_some(), "{}: Erz ohne Akzentfarbe", material.key);
+            }
             assert!((1.0..=10.0).contains(&material.hardness), "{}: Härte", material.key);
             assert!(material.density > 0.0, "{}: Dichte", material.key);
         }

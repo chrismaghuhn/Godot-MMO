@@ -36,6 +36,8 @@ pub struct ColumnData {
     pub biomes: [[BiomeRef; COLUMN_SAMPLES]; COLUMN_SAMPLES],
     /// Geologie pro Spalte, Indizierung wie `heights` (#44).
     geology: Vec<ColumnGeology>,
+    /// Fluss-Faktor 0..1 pro Spalte (öffentlich, Flüsse sind sichtbar), Indizierung wie `heights`.
+    rivers: Vec<f32>,
     min_height: f32,
     max_height: f32,
 }
@@ -57,6 +59,7 @@ impl ColumnData {
             heights: [[0.0; COLUMN_SAMPLES]; COLUMN_SAMPLES],
             biomes: [[default_biome; COLUMN_SAMPLES]; COLUMN_SAMPLES],
             geology: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
+            rivers: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             min_height: f32::INFINITY,
             max_height: f32::NEG_INFINITY,
         };
@@ -75,6 +78,7 @@ impl ColumnData {
                 let sample = world.sample(world_x, world_z);
                 column.heights[iz][ix] = sample.height;
                 column.biomes[iz][ix] = world.biome_at(&sample);
+                column.rivers.push(sample.river);
                 samples.push(sample);
             }
         }
@@ -116,6 +120,12 @@ impl ColumnData {
     #[inline]
     pub fn geology(&self, local_x: i32, local_z: i32) -> &ColumnGeology {
         &self.geology[(local_z - SAMPLE_MIN) as usize * COLUMN_SAMPLES + (local_x - SAMPLE_MIN) as usize]
+    }
+
+    /// Fluss-Faktor (0..1) an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).
+    #[inline]
+    pub fn river(&self, local_x: i32, local_z: i32) -> f32 {
+        self.rivers[(local_z - SAMPLE_MIN) as usize * COLUMN_SAMPLES + (local_x - SAMPLE_MIN) as usize]
     }
 
     /// Biom an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).
@@ -217,6 +227,16 @@ impl DensityChunk {
         if value <= 0.0 {
             self.materials[index] = MaterialId::AIR;
         }
+    }
+
+    /// Ersetzt das Material eines festen Samples (Erze im Untergrund). Die Dichte bleibt.
+    #[cfg_attr(not(feature = "underground"), allow(dead_code))]
+    #[inline]
+    pub(crate) fn set_material(&mut self, x: i32, y: i32, z: i32, material: MaterialId) {
+        let index = sample_index(x, y, z);
+        debug_assert!(self.values[index] > 0.0, "Material für Luft gesetzt (Sample {x},{y},{z})");
+        debug_assert!(!material.is_air(), "Luft als Material gesetzt (Sample {x},{y},{z})");
+        self.materials[index] = material;
     }
 
     /// Weltposition der lokalen Koordinate (0, 0, 0).
