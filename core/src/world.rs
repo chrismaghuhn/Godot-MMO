@@ -1,4 +1,5 @@
 use crate::biome::{BiomeRegistry, FamilyKind};
+use crate::material::MaterialRegistry;
 use crate::noise::NoiseBank;
 
 #[derive(Clone, Copy, Debug)]
@@ -42,6 +43,7 @@ pub struct BiomeRef {
 pub struct WorldGen {
     pub cfg: WorldConfig,
     pub biomes: BiomeRegistry,
+    pub materials: MaterialRegistry,
     noise: NoiseBank,
 }
 
@@ -53,6 +55,7 @@ impl WorldGen {
                 ..WorldConfig::default()
             },
             biomes: BiomeRegistry::load(),
+            materials: MaterialRegistry::load(),
             noise: NoiseBank::new(seed),
         }
     }

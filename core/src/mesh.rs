@@ -7,11 +7,9 @@
 //! `0..CHUNK_SIZE` liegt. Die Zellen der Randlage `-1` berechnet er zusätzlich aus den
 //! Rand-Samples, identisch zu den Zellen `CHUNK_SIZE - 1` des Nachbarn.
 
+use crate::material::MaterialId;
 use crate::volume::{ColumnData, DensityChunk, CHUNK_SIZE, SAMPLE_MIN};
 use crate::world::{WorldGen, smoothstep};
-
-/// Farbe von Fels unter der Oberfläche (sRGB).
-const ROCK_COLOR: [u8; 3] = [112, 106, 100];
 
 fn blend_rgb(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
     std::array::from_fn(|i| (a[i] as f32 + (b[i] as f32 - a[i] as f32) * t).round() as u8)
@@ -29,6 +27,8 @@ pub struct ChunkMesh {
     pub normals: Vec<[f32; 3]>,
     /// Vertex-Farben in sRGB.
     pub colors: Vec<[u8; 3]>,
+    /// Material pro Vertex: das der festesten Ecke seiner Zelle (nie Luft).
+    pub materials: Vec<MaterialId>,
     pub indices: Vec<u32>,
 }
 
@@ -37,22 +37,25 @@ impl ChunkMesh {
         self.indices.is_empty()
     }
 
-    /// Mesh inklusive Farben: Biom-Farbe an der Oberfläche, Fels darunter
-    /// (Höhlenwände, Überhänge). Nutzt nur öffentliche Daten (Höhe der Spalte).
+    /// Mesh inklusive Farben: Biom-Farbe an der Oberfläche, darunter die Farbe des
+    /// Materials (Höhlenwände, Überhänge, Klippen). Die Überblendung nutzt nur
+    /// öffentliche Daten (Höhe der Spalte).
     pub fn build(world: &WorldGen, column: &ColumnData, chunk: &DensityChunk) -> Self {
         let mut mesh = surface_nets(chunk);
         let origin_y = chunk.origin().y as f32;
         mesh.colors = mesh
             .positions
             .iter()
-            .map(|&[x, y, z]| {
+            .zip(&mesh.materials)
+            .map(|(&[x, y, z], &material)| {
                 let local_x = (x.round() as i32).clamp(SAMPLE_MIN, CHUNK_SIZE + 1);
                 let local_z = (z.round() as i32).clamp(SAMPLE_MIN, CHUNK_SIZE + 1);
                 let world_y = origin_y + y;
                 let biome = column.biome(local_x, local_z);
                 let surface = world.apply_altitude(world.biome_color(biome), world_y);
                 let depth = column.height(local_x, local_z) - world_y;
-                blend_rgb(surface, ROCK_COLOR, smoothstep(1.5, 4.0, depth))
+                let below = world.materials.color(material);
+                blend_rgb(surface, below, smoothstep(1.5, 4.0, depth))
             })
             .collect();
         mesh
@@ -94,7 +97,7 @@ const EDGES: [(usize, usize); 12] = [
     (3, 7),
 ];
 
-/// Surface Nets ohne Farben.
+/// Surface Nets ohne Farben (Positionen, Normalen, Materialien, Indizes).
 pub fn surface_nets(chunk: &DensityChunk) -> ChunkMesh {
     let mut mesh = ChunkMesh::default();
     let mut vertex_of_cell = vec![NO_VERTEX; CELLS * CELLS * CELLS];
@@ -105,16 +108,23 @@ pub fn surface_nets(chunk: &DensityChunk) -> ChunkMesh {
             for x in SAMPLE_MIN..CHUNK_SIZE {
                 let mut density = [0.0f32; 8];
                 let mut solid_mask = 0u8;
+                // Festeste Ecke (größte Dichte, bei Gleichstand die erste) bestimmt das Material.
+                let mut strongest = 0usize;
                 for (corner, offset) in CORNERS.iter().enumerate() {
                     let value = chunk.get(x + offset[0], y + offset[1], z + offset[2]);
                     density[corner] = value;
                     if value > 0.0 {
                         solid_mask |= 1 << corner;
                     }
+                    if value > density[strongest] {
+                        strongest = corner;
+                    }
                 }
                 if solid_mask == 0 || solid_mask == 0xFF {
                     continue;
                 }
+                let offset = CORNERS[strongest];
+                let material = chunk.material(x + offset[0], y + offset[1], z + offset[2]);
 
                 let mut sum = [0.0f32; 3];
                 let mut crossings = 0.0f32;
@@ -154,6 +164,7 @@ pub fn surface_nets(chunk: &DensityChunk) -> ChunkMesh {
                     z as f32 + sum[2] / crossings,
                 ]);
                 mesh.normals.push([-gx / length, -gy / length, -gz / length]);
+                mesh.materials.push(material);
             }
         }
     }
@@ -239,6 +250,20 @@ mod tests {
         }
         for tri in mesh.indices.chunks(3) {
             assert!(triangle_normal(&mesh, tri).y > 0.0, "Dreieck zeigt nach unten");
+        }
+    }
+
+    #[test]
+    fn every_vertex_has_a_solid_material() {
+        let world = WorldGen::new(42);
+        for (chunk_x, chunk_z) in [(0, 0), (9, -4), (-20, 13)] {
+            let (column, chunk) = surface_chunk(&world, chunk_x, chunk_z);
+            let mesh = ChunkMesh::build(&world, &column, &chunk);
+            assert_eq!(mesh.materials.len(), mesh.positions.len());
+            assert_eq!(mesh.colors.len(), mesh.positions.len());
+            assert!(mesh.materials.iter().all(|m| !m.is_air()), "Vertex mit Luft-Material");
+            // Bis #44 ist alles Feste "Gestein".
+            assert!(mesh.materials.iter().all(|&m| m == MaterialId::STONE));
         }
     }
 

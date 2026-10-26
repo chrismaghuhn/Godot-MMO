@@ -144,6 +144,7 @@ mod tests {
                 for chunk_y in column.surface_chunks() {
                     let public = DensityChunk::from_column(&column, chunk_y);
                     let full = underground.density_chunk(&world, &column, chunk_y).expect("Oberflächen-Chunk fehlt");
+                    full.assert_material_invariant();
                     let origin = public.origin();
                     let entrance = |x: i32, z: i32| {
                         underground.caves.entrance((origin.x + x) as f32, (origin.z + z) as f32, column.height(x, z), sea) > 0.0
@@ -174,6 +175,11 @@ mod tests {
                                         public.get(cx, cy, cz).to_bits(),
                                         full.get(cx, cy, cz).to_bits(),
                                         "Oberflächen-Zelle verändert: Chunk {chunk_x},{chunk_y},{chunk_z}, Zelle {x},{y},{z}"
+                                    );
+                                    assert_eq!(
+                                        public.material(cx, cy, cz),
+                                        full.material(cx, cy, cz),
+                                        "Material einer Oberflächen-Zelle verändert: Chunk {chunk_x},{chunk_y},{chunk_z}, Zelle {x},{y},{z}"
                                     );
                                 }
                             }
@@ -254,6 +260,7 @@ mod tests {
                 let mut forced = DensityChunk::from_column(&column, chunk_y);
                 let grid = CaveGrid::build(&underground.caves, chunk_x, chunk_y, chunk_z);
                 caves::carve(&underground.caves, &grid, &column, &shell, &mut forced, world.cfg.sea_level);
+                forced.assert_material_invariant();
                 let mut has_air = false;
                 for_each_sample(|x, y, z| has_air |= forced.get(x, y, z) <= 0.0);
 
@@ -319,6 +326,11 @@ mod tests {
                                     let vb = b.get(pb[0], pb[1], pb[2]);
                                     if a_some && b_some {
                                         assert_eq!(va.to_bits(), vb.to_bits(), "Achse {axis}, Chunk {chunk_x},{chunk_y},{chunk_z}, {pa:?}");
+                                        assert_eq!(
+                                            a.material(pa[0], pa[1], pa[2]),
+                                            b.material(pb[0], pb[1], pb[2]),
+                                            "Material Achse {axis}, Chunk {chunk_x},{chunk_y},{chunk_z}, {pa:?}"
+                                        );
                                     } else {
                                         assert_eq!(va > 0.0, vb > 0.0, "Vorzeichen Achse {axis}, Chunk {chunk_x},{chunk_y},{chunk_z}, {pa:?}");
                                     }

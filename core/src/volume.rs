@@ -1,11 +1,14 @@
-//! Volumen-Terrain: Dichtefeld in 3D-Chunks (D-004).
+//! Volumen-Terrain: Dichtefeld und Material in 3D-Chunks (D-004, D-013).
 //!
 //! Konvention: `dichte > 0` ist fest (Fels/Erde), `dichte <= 0` ist Luft.
-//! Die Oberfläche liegt bei `dichte == 0`. Aktuell kommt die Dichte nur aus der
-//! Höhenfunktion (`dichte = höhe(x,z) - y`); Höhlen ziehen später davon ab (#4).
+//! Die Oberfläche liegt bei `dichte == 0`. Die öffentliche Dichte kommt aus der
+//! Höhenfunktion (`dichte = höhe(x,z) - y`); Höhlen ziehen im Untergrund davon ab (#4).
+//!
+//! Jedes Sample hat zusätzlich ein Material. Invariante: Dichte <= 0 ⇔ `MaterialId::AIR`.
 
 use glam::IVec3;
 
+use crate::material::MaterialId;
 use crate::world::{BiomeRef, WorldGen};
 
 /// Kantenlänge eines Chunks in Zellen (= Meter).
@@ -108,57 +111,100 @@ impl ColumnData {
     }
 }
 
-/// Dichtefeld eines Chunks inklusive einer Lage Rand-Samples zum Nachbarn.
+/// Dichtefeld und Material eines Chunks inklusive einer Lage Rand-Samples zum Nachbarn.
 pub struct DensityChunk {
     pub position: IVec3,
     values: Vec<f32>,
+    materials: Vec<MaterialId>,
+}
+
+#[inline]
+fn sample_index(x: i32, y: i32, z: i32) -> usize {
+    let n = DENSITY_SAMPLES;
+    let ix = (x - SAMPLE_MIN) as usize;
+    let iy = (y - SAMPLE_MIN) as usize;
+    let iz = (z - SAMPLE_MIN) as usize;
+    (iz * n + iy) * n + ix
 }
 
 impl DensityChunk {
     pub fn from_column(column: &ColumnData, chunk_y: i32) -> Self {
         let n = DENSITY_SAMPLES;
         let mut values = vec![0.0; n * n * n];
+        let mut materials = vec![MaterialId::AIR; n * n * n];
         let origin_y = chunk_y * CHUNK_SIZE;
         for iz in 0..n {
             for ix in 0..n {
                 let height = column.heights[iz][ix];
                 for iy in 0..n {
                     let world_y = (origin_y + iy as i32 + SAMPLE_MIN) as f32;
-                    values[(iz * n + iy) * n + ix] = height - world_y;
+                    let index = (iz * n + iy) * n + ix;
+                    let density = height - world_y;
+                    values[index] = density;
+                    // Gesteinsschichten folgen in #44; bis dahin ist alles Feste "Gestein".
+                    if density > 0.0 {
+                        materials[index] = MaterialId::STONE;
+                    }
                 }
             }
         }
         Self {
             position: IVec3::new(column.chunk_x, chunk_y, column.chunk_z),
             values,
+            materials,
         }
     }
 
     /// Dichte an lokaler Koordinate `-1..=CHUNK_SIZE` je Achse.
     #[inline]
     pub fn get(&self, x: i32, y: i32, z: i32) -> f32 {
-        let n = DENSITY_SAMPLES;
-        let ix = (x - SAMPLE_MIN) as usize;
-        let iy = (y - SAMPLE_MIN) as usize;
-        let iz = (z - SAMPLE_MIN) as usize;
-        self.values[(iz * n + iy) * n + ix]
+        self.values[sample_index(x, y, z)]
     }
 
-    /// Setzt die Dichte an lokaler Koordinate `-1..=CHUNK_SIZE` je Achse.
+    /// Material an lokaler Koordinate `-1..=CHUNK_SIZE` je Achse (`AIR` bei Dichte <= 0).
+    #[inline]
+    pub fn material(&self, x: i32, y: i32, z: i32) -> MaterialId {
+        self.materials[sample_index(x, y, z)]
+    }
+
+    /// Setzt die Dichte an lokaler Koordinate `-1..=CHUNK_SIZE` je Achse und hält die
+    /// Invariante ein: Wird das Sample zu Luft, wird auch das Material zu Luft.
     /// Nur innerhalb des Cores (Untergrund), damit Chunks nicht beliebig verändert werden.
     #[cfg_attr(not(feature = "underground"), allow(dead_code))]
     #[inline]
     pub(crate) fn set(&mut self, x: i32, y: i32, z: i32, value: f32) {
-        let n = DENSITY_SAMPLES;
-        let ix = (x - SAMPLE_MIN) as usize;
-        let iy = (y - SAMPLE_MIN) as usize;
-        let iz = (z - SAMPLE_MIN) as usize;
-        self.values[(iz * n + iy) * n + ix] = value;
+        let index = sample_index(x, y, z);
+        debug_assert!(
+            value <= 0.0 || !self.materials[index].is_air(),
+            "Luft fest machen braucht ein Material (Sample {x},{y},{z})"
+        );
+        self.values[index] = value;
+        if value <= 0.0 {
+            self.materials[index] = MaterialId::AIR;
+        }
     }
 
     /// Weltposition der lokalen Koordinate (0, 0, 0).
     pub fn origin(&self) -> IVec3 {
         self.position * CHUNK_SIZE
+    }
+
+    /// Prüft die Invariante Dichte <= 0 ⇔ Luft für alle Samples (nur Tests).
+    #[cfg(test)]
+    pub(crate) fn assert_material_invariant(&self) {
+        for z in SAMPLE_MIN..=CHUNK_SIZE {
+            for y in SAMPLE_MIN..=CHUNK_SIZE {
+                for x in SAMPLE_MIN..=CHUNK_SIZE {
+                    let air = self.get(x, y, z) <= 0.0;
+                    assert_eq!(
+                        air,
+                        self.material(x, y, z).is_air(),
+                        "Invariante verletzt bei {x},{y},{z} (Chunk {:?})",
+                        self.position
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -220,6 +266,23 @@ mod tests {
                 .collect();
             assert_eq!(listed, expected);
             assert!(!listed.is_empty());
+        }
+    }
+
+    #[test]
+    fn public_chunks_keep_the_material_invariant() {
+        let world = WorldGen::new(42);
+        for (chunk_x, chunk_z) in [(0, 0), (5, -3), (-12, 7)] {
+            let column = ColumnData::sample(&world, chunk_x, chunk_z);
+            for chunk_y in -3..6 {
+                let chunk = DensityChunk::from_column(&column, chunk_y);
+                chunk.assert_material_invariant();
+                // Bis #44 ist alles Feste "Gestein".
+                for (x, y, z) in [(0, 0, 0), (16, 16, 16), (32, 32, 32), (-1, -1, -1)] {
+                    let material = chunk.material(x, y, z);
+                    assert!(material.is_air() || material == MaterialId::STONE);
+                }
+            }
         }
     }
 
