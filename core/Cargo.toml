@@ -10,3 +10,8 @@ serde = { version = "1", features = ["derive"] }
 ron = "0.12"
 # Gleiche Version wie bevy_math, damit Vec3/Quat im Viewer ohne Konvertierung passen.
 glam = "0.33"
+
+[features]
+# Geheimer Untergrund (Höhlen, Erze) – nur für Server und Debug-Tools, nie für den
+# Spiel-Client (D-005). Ohne das Feature wird `underground` nicht mitkompiliert.
+underground = []

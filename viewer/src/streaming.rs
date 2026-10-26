@@ -11,12 +11,12 @@ use bevy::{
 use terraforge_core::{
     mesh::ChunkMesh,
     vegetation::{TreePlacement, TreeStyle, plan_trees},
-    volume::{self, ColumnData, DensityChunk},
+    volume::{self, ColumnData},
 };
 
 use crate::meshes::chunk_mesh_to_bevy;
 use crate::scene::SpawnPoint;
-use crate::WorldRes;
+use crate::{UndergroundRes, WorldRes};
 
 pub const CHUNK_SIZE: f32 = volume::CHUNK_SIZE as f32;
 const CHUNK_JOBS_IN_FLIGHT: usize = 8;
@@ -79,6 +79,7 @@ pub struct TerrainChunk;
 #[derive(SystemParam)]
 struct ChunkContext<'w> {
     world: Res<'w, WorldRes>,
+    underground: Res<'w, UndergroundRes>,
     assets: Res<'w, ChunkAssets>,
     spawn: Res<'w, SpawnPoint>,
     chunks: ResMut<'w, ChunkMap>,
@@ -190,12 +191,15 @@ fn stream_chunks(
     let slots = CHUNK_JOBS_IN_FLIGHT.saturating_sub(ctx.jobs.pending.len());
     for (position, _) in missing.into_iter().take(slots) {
         let world = Arc::clone(&ctx.world.0);
+        let underground = Arc::clone(&ctx.underground.0);
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let column = ColumnData::sample(&world, position.x, position.y);
+            // Höhlen (#4) werden auch Chunks unter der Oberfläche betreffen; dann reicht
+            // `surface_chunks()` nicht mehr und es braucht vertikales Streaming.
             let meshes = column
                 .surface_chunks()
                 .filter_map(|chunk_y| {
-                    let density = DensityChunk::from_column(&column, chunk_y);
+                    let density = underground.density_chunk(&column, chunk_y)?;
                     let mesh = ChunkMesh::build(&world, &column, &density);
                     (!mesh.is_empty()).then(|| (chunk_y, chunk_mesh_to_bevy(mesh)))
                 })

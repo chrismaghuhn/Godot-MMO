@@ -112,6 +112,18 @@ Dazu **Interest Management**: Clients bekommen nur Spieler, Monster und Items in
 massiver Fels). Die Trennung muss von Anfang an im Core angelegt werden, nachträglich wäre es ein
 großer Umbau.
 
+**Umsetzung (#3, 2026-10-26):**
+- Cargo-Feature `underground` in `terraforge-core`; das Modul `core/src/underground/` wird nur
+  damit kompiliert. Der öffentliche Teil muss ohne das Feature bauen, damit kann er technisch
+  nichts aus dem Untergrund importieren. Geprüft: Ohne Feature enthält die Bibliothek keinen
+  Untergrund-Code.
+- `SecretSeed`: kein `Default`/`Display`, `Debug` zeigt `***`. `insecure_dev_seed` nur für
+  Viewer und Tests. Der Viewer nimmt `TERRAFORGE_SECRET_SEED`, sonst den Entwickler-Seed.
+- **Achtung, Feature-Vereinigung:** Cargo vereinigt Features aller Crates, die in *einem* Befehl
+  gebaut werden. Ein Release-Build des Spiel-Clients muss deshalb einzeln laufen
+  (`cargo build -p <client-crate> --release`), nie zusammen mit Viewer oder Server
+  (`--workspace`). Sonst wäre der Untergrund im Client enthalten.
+
 ## D-006: Rendering-Strategie, nur zeichnen was sichtbar ist
 - Datum: 2026-10-26
 - Status: angenommen

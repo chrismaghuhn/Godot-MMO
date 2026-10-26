@@ -10,7 +10,8 @@ name = "terraforge"
 path = "src/main.rs"
 
 [dependencies]
-terraforge-core = { path = "../core" }
+# Der Viewer ist ein Debug-Tool und darf den geheimen Untergrund erzeugen (D-005).
+terraforge-core = { path = "../core", features = ["underground"] }
 bevy = { version = "0.20", default-features = false, features = [
     "std",
     "multi_threaded",
