@@ -4,14 +4,14 @@
 //! werden, und baut sie in eigenen Threads; seine Worker bereiten die Meshes schon im Godot-Format
 //! vor (`MeshData`). Dieser Node setzt nur die Events um: Spalten sind `Node3D` mit ihren Chunks
 //! als `MeshInstance3D`, Höhlen-Chunks und Fernkacheln eigene `MeshInstance3D`. Wie viele Meshes
-//! pro Frame hochgeladen werden, begrenzt der Streamer (wie im Viewer).
+//! pro Frame hochgeladen werden, begrenzt der Streamer (wie im Viewer). Bäume hängen als
+//! MultiMesh an ihrer Spalte (`trees`, #12).
 //!
-//! Ohne Server gibt es nur die öffentliche Oberfläche (`PublicSurface`): Höhlen kommen mit #56,
-//! Bäume mit #12.
+//! Ohne Server gibt es nur die öffentliche Oberfläche (`PublicSurface`): Höhlen kommen mit #56.
 //!
-//! Seed, Sichtradius und Fernterrain gelten ab `_ready`; spätere Änderungen wirken nicht. Der Node
-//! darf verschoben, aber nicht gedreht oder skaliert werden (die Kamera wird in seine lokalen
-//! Koordinaten umgerechnet, die Chunks liegen achsparallel darin).
+//! Seed, Sichtradius, Fernterrain und `spawn_clearing` gelten ab `_ready`; spätere Änderungen
+//! wirken nicht. Der Node darf verschoben, aber nicht gedreht oder skaliert werden (die Kamera wird
+//! in seine lokalen Koordinaten umgerechnet, die Chunks liegen achsparallel darin).
 
 // Das `GodotClass`-Makro erzeugt für `#[class(init)]` Code wie `base: base`.
 #![allow(clippy::redundant_field_names)]
@@ -20,16 +20,18 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use glam::{IVec2, IVec3};
+use glam::{IVec2, IVec3, Vec3Swizzles};
 use godot::classes::base_material_3d::{Flags, ShadingMode};
 use godot::classes::{INode3D, MeshInstance3D, Node3D, StandardMaterial3D};
 use godot::prelude::*;
 use terraforge_core::WorldGen;
+use terraforge_core::spawn::find_spawn;
 use terraforge_core::edits::WorldEdits;
 use terraforge_core::streaming::{Config, Event, FarKey, JobKind, PublicSurface, Streamer};
 use terraforge_core::volume::CHUNK_SIZE;
 
 use crate::mesh::MeshData;
+use crate::trees::TreeAssets;
 use crate::world::TerraforgeWorld;
 
 /// So viele Job-Dauern pro Art fließen in die Durchschnitte von `get_stats` ein.
@@ -53,11 +55,16 @@ pub(crate) struct TerraforgeTerrain {
     /// Alle Job-Dauern für `take_job_times` sammeln (Benchmark). Vor dem Start setzen.
     #[export]
     record_job_times: bool,
+    /// Baumfreier Kreis (m) um den Spawnpunkt, wie im Viewer; 0 = überall Bäume.
+    #[export]
+    #[init(val = 17.0)]
+    spawn_clearing: f32,
 
     world: Option<Arc<WorldGen>>,
     streamer: Option<Streamer<MeshData>>,
     material: Option<Gd<StandardMaterial3D>>,
-    columns: HashMap<IVec2, Gd<Node3D>>,
+    trees: Option<TreeAssets>,
+    columns: HashMap<IVec2, Column>,
     caves: HashMap<IVec3, Gd<MeshInstance3D>>,
     far: HashMap<FarKey, Gd<MeshInstance3D>>,
     /// Letzte Job-Dauern pro Art (Spalte, Höhle, Fern) für die Anzeige.
@@ -67,6 +74,13 @@ pub(crate) struct TerraforgeTerrain {
     /// Zeit für das Umsetzen der Events im letzten Frame (Mesh-Upload, Nodes).
     upload: Duration,
     base: Base<Node3D>,
+}
+
+/// Eine geladene Spalte: Node mit Chunks und Bäumen als Kinder.
+struct Column {
+    node: Gd<Node3D>,
+    chunks: usize,
+    trees: usize,
 }
 
 fn kind_index(kind: JobKind) -> usize {
@@ -91,6 +105,9 @@ impl INode3D for TerraforgeTerrain {
         let mut config = Config::new(self.view_radius);
         config.far = self.far_terrain;
         config.record_job_times = true;
+        if self.spawn_clearing > 0.0 {
+            config.clearing = Some((find_spawn(&world).xz(), self.spawn_clearing));
+        }
         let edits = Arc::new(RwLock::new(WorldEdits::default()));
         self.streamer = Some(Streamer::new(Arc::clone(&world), Arc::new(PublicSurface), edits, config, MeshData::from_core));
         self.world = Some(world);
@@ -103,6 +120,7 @@ impl INode3D for TerraforgeTerrain {
         material.set_metallic(0.0);
         material.set_specular(0.0);
         self.material = Some(material);
+        self.trees = Some(TreeAssets::new());
     }
 
     fn process(&mut self, _delta: f64) {
@@ -148,23 +166,26 @@ impl TerraforgeTerrain {
     fn apply(&mut self, event: Event<MeshData>) {
         let size = CHUNK_SIZE as f32;
         match event {
-            Event::ShowColumn { column, chunks, trees: _ } => {
+            Event::ShowColumn { column, chunks, trees } => {
                 let mut node = Node3D::new_alloc();
                 node.set_name(&format!("Spalte {} {}", column.x, column.y));
                 node.set_position(Vector3::new(column.x as f32 * size, 0.0, column.y as f32 * size));
+                let chunk_count = chunks.len();
                 for (chunk_y, data) in chunks {
                     let instance = self.mesh_instance(data, Vector3::new(0.0, chunk_y as f32 * size, 0.0));
                     node.add_child(&instance);
                 }
+                let tree_count = self.trees.as_ref().map_or(0, |assets| assets.add_to(&mut node, &trees));
                 self.base_mut().add_child(&node);
+                let node = Column { node, chunks: chunk_count, trees: tree_count };
                 // Neubau: die alte Spalte erst jetzt entfernen, wo die neue da ist (kein Flackern).
                 if let Some(mut old) = self.columns.insert(column, node) {
-                    old.queue_free();
+                    old.node.queue_free();
                 }
             }
             Event::RemoveColumn { column } => {
-                if let Some(mut node) = self.columns.remove(&column) {
-                    node.queue_free();
+                if let Some(mut old) = self.columns.remove(&column) {
+                    old.node.queue_free();
                 }
             }
             Event::ShowCave { chunk, mesh } => {
@@ -247,8 +268,9 @@ impl TerraforgeTerrain {
         set("caves_shown", (s.cull.shown as i64).to_variant());
         set("far_jobs", (s.far_jobs as i64).to_variant());
         set("far_tiles", (s.far_tiles as i64).to_variant());
-        let column_meshes: i32 = self.columns.values().map(|node| node.get_child_count()).sum();
-        set("meshes", (column_meshes as i64 + self.caves.len() as i64 + self.far.len() as i64).to_variant());
+        let column_meshes: usize = self.columns.values().map(|column| column.chunks).sum();
+        set("meshes", ((column_meshes + self.caves.len() + self.far.len()) as i64).to_variant());
+        set("trees", (self.columns.values().map(|column| column.trees).sum::<usize>() as i64).to_variant());
         let idle = s.column_jobs == 0 && s.columns_ready == 0 && s.cave_jobs == 0 && s.caves_ready == 0 && s.far_jobs == 0 && s.far_ready == 0;
         set("idle", idle.to_variant());
         set("upload_ms", (self.upload.as_secs_f32() * 1000.0).to_variant());

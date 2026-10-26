@@ -48,8 +48,8 @@ godot --path client
 Die Startszene ([`scenes/main.tscn`](scenes/main.tscn), aufgebaut in
 [`scripts/main.gd`](scripts/main.gd)) streamt das Terrain um die Kamera (`TerraforgeTerrain`,
 #11), mit Fernterrain bis ~3,5 km, Nebel, Sonne und Wasser
-([`shaders/water.gdshader`](shaders/water.gdshader)). Start am selben Spawnpunkt wie im Viewer.
-Bäume folgen mit #12, Höhlen mit dem Server (#56).
+([`shaders/water.gdshader`](shaders/water.gdshader)) und Bäumen (MultiMesh pro Spalte, #12). Start
+am selben Spawnpunkt wie im Viewer. Höhlen kommen mit dem Server (#56).
 
 - **Steuerung:** WASD + Q/E fliegen, Shift schnell, rechte Maustaste halten zum Umsehen,
   F3 Overlay (Frametimes, Streaming, gezeichnete Objekte, Position, Biom).

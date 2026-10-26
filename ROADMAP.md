@@ -64,7 +64,7 @@ Server-Prozess, damit der Client nie `underground` enthält (D-005).
 - [x] gdext-Crate, Godot lädt `terraforge-core`: #10
 - [x] Chunk-Mesh in Godot anzeigen, dann Streaming um die Kamera: #11
   - [x] Fernterrain (D-015), Wasser-Shader, Debug-Overlay (Frametimes, Chunk-Zeiten)
-- [ ] Bäume über `MultiMeshInstance3D`: #12
+- [x] Bäume über `MultiMeshInstance3D`: #12
 - [ ] Lokaler Server-Prozess (`server/`, `protocol/`): Untergrund-Chunks, Erz-Filter, Cave Culling im Client: #56
 - [ ] Laufen, Fliegen, Kollision mit dem Terrain, Bewegung im Core: #13
 - [ ] Graben/Bauen im Client, geprüft vom Server: #14

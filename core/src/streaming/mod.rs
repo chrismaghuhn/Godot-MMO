@@ -27,6 +27,8 @@ mod source;
 mod wanted;
 
 #[cfg(test)]
+mod streamer_tests;
+#[cfg(test)]
 mod tests;
 
 use std::collections::HashMap;

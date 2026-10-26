@@ -3,7 +3,8 @@
 #   godot --headless --path client --script res://tests/terrain_smoke.gd -- [near|far]
 #
 # near: Radius 2 ohne Fernterrain. Prüft die Spalten um den Spawnpunkt (genaue Positionen, Chunks
-#       in ihrer Höhe), fliegt 10 Spalten weiter und prüft, dass alte Spalten verschwinden.
+#       in ihrer Höhe, Bäume als MultiMesh), fliegt 10 Spalten
+#       weiter und prüft, dass alte Spalten verschwinden.
 # far:  Radius 4 mit Fernterrain. Prüft, dass genau die Spalten und Fernkacheln als Nodes da sind,
 #       auch nach einem Flug über ein ganzes Fernfeld (1024 m).
 # Gibt eine Zeile "TERRAFORGE_TERRAIN ..." aus; Exit-Code 1 bei Fehlern.
@@ -57,6 +58,7 @@ func check(stats: Dictionary) -> bool:
 	var wanted := expected_columns()
 	var columns := {}
 	var far_nodes := 0
+	var trees := 0
 	for node in terrain.get_children():
 		if not String(node.name).begins_with("Spalte"):
 			far_nodes += 1
@@ -67,6 +69,19 @@ func check(stats: Dictionary) -> bool:
 			return false
 		columns[key] = true
 		for chunk in node.get_children():
+			if chunk is MultiMeshInstance3D:
+				trees += chunk.multimesh.instance_count
+				# Headless speichert Godot keine Instanz-Transforms (Dummy-Renderer); die prüft
+				# ein Rust-Test (`gdext/src/trees.rs`), den freien Kreis ein Core-Test.
+				var multimesh: MultiMesh = chunk.multimesh
+				if multimesh.instance_count == 0 or multimesh.mesh == null:
+					fail("leeres MultiMesh in %s" % node.name)
+					return false
+				# Diese Werte liegen am Objekt und lassen sich auch headless prüfen.
+				if multimesh.transform_format != MultiMesh.TRANSFORM_3D or chunk.material_override == null:
+					fail("MultiMesh in %s ohne 3D-Transforms oder Material" % node.name)
+					return false
+				continue
 			var mesh: ArrayMesh = chunk.mesh
 			if mesh == null or mesh.get_surface_count() != 1 or mesh.surface_get_array_len(0) == 0:
 				fail("leeres Mesh in %s" % node.name)
@@ -76,6 +91,9 @@ func check(stats: Dictionary) -> bool:
 				return false
 	if columns.size() != wanted.size() or stats.columns != wanted.size():
 		fail("%d Spalten-Nodes, %d laut Streamer, erwartet %d" % [columns.size(), stats.columns, wanted.size()])
+		return false
+	if trees != stats.trees or trees == 0:
+		fail("%d Bäume in MultiMeshes, %d laut Terrain" % [trees, stats.trees])
 		return false
 	var expected_far: int = FAR_TILES if far else 0
 	if far_nodes != stats.far_tiles or stats.far_tiles != expected_far:
@@ -112,6 +130,6 @@ func _process(_delta: float) -> bool:
 		phase = 1
 		return false
 	var mode := "far" if far else "near"
-	print("TERRAFORGE_TERRAIN mode=%s columns=%d meshes=%d far_tiles=%d frames=%d" % [mode, first.columns, first.meshes, stats.far_tiles, frames])
+	print("TERRAFORGE_TERRAIN mode=%s columns=%d meshes=%d trees=%d far_tiles=%d frames=%d" % [mode, first.columns, first.meshes, first.trees, stats.far_tiles, frames])
 	quit(0)
 	return true

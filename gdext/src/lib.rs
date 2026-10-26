@@ -3,6 +3,7 @@
 //! Eine Datei pro Godot-Klasse:
 //! - `world`:   `TerraforgeWorld`, die öffentliche Weltgenerierung (Höhe, Biom, Spawnpunkt)
 //! - `terrain`: `TerraforgeTerrain`, Chunk-Streaming um die Kamera (#11)
+//! - `trees`:   Bäume als MultiMesh pro Spalte und Baum-Mesh (#12, keine Godot-Klasse)
 //! - `mesh`:    Core-Meshes → Godot-Meshes (keine Godot-Klasse)
 //!
 //! Der geheime Untergrund ist nicht enthalten (D-005); Höhlen und Erze kommen später vom Server
@@ -10,6 +11,7 @@
 
 mod mesh;
 mod terrain;
+mod trees;
 mod world;
 
 use godot::prelude::*;

@@ -668,3 +668,12 @@ Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
 - Review-Funde behoben: Nebel war praktisch aus (`fog_density` ist im Tiefenmodus die
   Höchststärke), der Terrain-Test lief wegen eines verdeckten Skriptfehlers am Ursprung,
   Fernkacheln galten vor dem Einfügen als fertig (`Stats` hat jetzt `far_ready`/`caves_ready`).
+
+**Umsetzung Bäume (#12, 2026-10-27):**
+- Pro Spalte und Baum-Mesh (7 Arten × 3 Varianten) ein `MultiMeshInstance3D` unter der Spalte;
+  die 21 Meshes werden einmal gebaut (`gdext/src/trees.rs`). Lage wie im Viewer (skaliert, um die
+  Hochachse gedreht), Material matt und beidseitig, baumfreier Kreis um den Spawnpunkt wie im
+  Viewer (`spawn_clearing`, 17 m).
+- Gemessen (30 s Autopilot, VSync): kein Frame über 16,7 ms, Upload unverändert Ø 0,4 ms.
+- Headless speichert Godot keine Instanz-Transforms (Dummy-Renderer). Deshalb prüft der Godot-Test
+  nur Anzahlen; Transforms prüft ein Rust-Test, den freien Kreis ein Core-Test.
