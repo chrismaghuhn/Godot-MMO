@@ -15,8 +15,22 @@ pub struct MaterialId(pub u16);
 impl MaterialId {
     /// Luft: jedes Sample mit Dichte <= 0.
     pub const AIR: MaterialId = MaterialId(0);
-    /// Allgemeines Gestein, Platzhalter bis zu den Gesteinsschichten (#44).
+    /// Allgemeines Gestein (Platzhalter aus #43, vom Generator nicht mehr verwendet).
     pub const STONE: MaterialId = MaterialId(1);
+
+    // Vom öffentlichen Generator verwendete Materialien (#44). Ein Test prüft, dass jede
+    // Konstante zum Schlüssel in `materials.ron` passt.
+    pub const DIRT: MaterialId = MaterialId(2);
+    pub const SAND: MaterialId = MaterialId(3);
+    pub const GRAVEL: MaterialId = MaterialId(4);
+    pub const CLAY: MaterialId = MaterialId(5);
+    pub const SNOW: MaterialId = MaterialId(6);
+    pub const SANDSTONE: MaterialId = MaterialId(10);
+    pub const LIMESTONE: MaterialId = MaterialId(11);
+    pub const SLATE: MaterialId = MaterialId(12);
+    pub const GRANITE: MaterialId = MaterialId(13);
+    pub const BASALT: MaterialId = MaterialId(14);
+    pub const MARBLE: MaterialId = MaterialId(15);
 
     pub fn is_air(self) -> bool {
         self == Self::AIR
@@ -155,6 +169,27 @@ mod tests {
         assert!(MaterialRegistry::parse(&list(&[stone.clone(), entry(2, "a"), entry(3, "a")])).is_err(), "Schlüssel doppelt");
         assert!(MaterialRegistry::parse(&list(&[entry(1, "granite")])).is_err(), "ID 1 ist nicht stone");
         assert!(MaterialRegistry::parse("kein ron").is_err());
+    }
+
+    #[test]
+    fn constants_match_the_material_list() {
+        let registry = MaterialRegistry::load();
+        for (constant, key) in [
+            (MaterialId::STONE, "stone"),
+            (MaterialId::DIRT, "dirt"),
+            (MaterialId::SAND, "sand"),
+            (MaterialId::GRAVEL, "gravel"),
+            (MaterialId::CLAY, "clay"),
+            (MaterialId::SNOW, "snow"),
+            (MaterialId::SANDSTONE, "sandstone"),
+            (MaterialId::LIMESTONE, "limestone"),
+            (MaterialId::SLATE, "slate"),
+            (MaterialId::GRANITE, "granite"),
+            (MaterialId::BASALT, "basalt"),
+            (MaterialId::MARBLE, "marble"),
+        ] {
+            assert_eq!(registry.by_key(key), Some(constant), "Konstante für {key} passt nicht");
+        }
     }
 
     #[test]

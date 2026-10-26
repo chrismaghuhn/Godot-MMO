@@ -298,3 +298,15 @@ korrekt darstellen), Flöze (bewusst weggelassen, um die Formen überschaubar zu
 
 **Folgen:** Aufteilung in Teil-Issues (5a-5f). Die Sichtbarkeits-Filterung (Erze erst senden,
 wenn sie freiliegen) wird im Core vorbereitet und in #26 genutzt.
+
+**Umsetzung Gestein (#44, 2026-10-26):**
+- `core/src/geology.rs`: pro Spalte eine `ColumnGeology` (Bodenschichten, Basaltdecke,
+  Schicht-Verschiebung und -Streckung, Grundgebirge, Marmorband), einmal in `ColumnData`
+  berechnet; pro Sample nur `material_at(geologie, tiefe, y)`.
+- Von oben: Boden je Biom → Basalt (vulkanisch) → Sedimente (unregelmäßige 85-m-Folge aus
+  Sandstein/Schiefer/Kalkstein, gewellt, in Bergen gefaltet) → Marmorband → Granit
+  (in Bergen bis ~150 m hochgedrückt).
+- Hangneigung nur aus den Nachbarn in +x/+z: beidseitig ginge es für die Randspalte nicht,
+  und Nachbar-Chunks müssen gemeinsame Samples bitgleich berechnen. Folge: leichte Richtungs-
+  abhängigkeit, ab welcher Neigung der Boden fehlt.
+- Werkzeug `geodump` (Viewer): Querschnitte und Oberflächenmaterial-Karte zum Prüfen.

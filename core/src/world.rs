@@ -1,4 +1,5 @@
 use crate::biome::{BiomeRegistry, FamilyKind};
+use crate::geology::Geology;
 use crate::material::MaterialRegistry;
 use crate::noise::NoiseBank;
 
@@ -44,16 +45,19 @@ pub struct WorldGen {
     pub cfg: WorldConfig,
     pub biomes: BiomeRegistry,
     pub materials: MaterialRegistry,
+    pub geology: Geology,
     noise: NoiseBank,
 }
 
 impl WorldGen {
     pub fn new(seed: u32) -> Self {
+        let cfg = WorldConfig {
+            seed,
+            ..WorldConfig::default()
+        };
         Self {
-            cfg: WorldConfig {
-                seed,
-                ..WorldConfig::default()
-            },
+            cfg,
+            geology: Geology::new(seed, cfg.sea_level),
             biomes: BiomeRegistry::load(),
             materials: MaterialRegistry::load(),
             noise: NoiseBank::new(seed),

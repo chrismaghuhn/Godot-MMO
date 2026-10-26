@@ -262,8 +262,7 @@ mod tests {
             assert_eq!(mesh.materials.len(), mesh.positions.len());
             assert_eq!(mesh.colors.len(), mesh.positions.len());
             assert!(mesh.materials.iter().all(|m| !m.is_air()), "Vertex mit Luft-Material");
-            // Bis #44 ist alles Feste "Gestein".
-            assert!(mesh.materials.iter().all(|&m| m == MaterialId::STONE));
+            assert!(mesh.materials.iter().all(|&m| world.materials.get(m).is_some()), "unbekanntes Material");
         }
     }
 

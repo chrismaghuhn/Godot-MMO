@@ -8,6 +8,7 @@
 
 use glam::IVec3;
 
+use crate::geology::{ColumnGeology, material_at};
 use crate::material::MaterialId;
 use crate::world::{BiomeRef, WorldGen};
 
@@ -33,6 +34,8 @@ pub struct ColumnData {
     pub heights: [[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES],
     /// Biome mit derselben Indizierung wie `heights`.
     pub biomes: [[BiomeRef; COLUMN_SAMPLES]; COLUMN_SAMPLES],
+    /// Geologie pro Spalte, Indizierung wie `heights` (#44).
+    geology: Vec<ColumnGeology>,
     min_height: f32,
     max_height: f32,
 }
@@ -53,18 +56,44 @@ impl ColumnData {
             chunk_z,
             heights: [[0.0; COLUMN_SAMPLES]; COLUMN_SAMPLES],
             biomes: [[default_biome; COLUMN_SAMPLES]; COLUMN_SAMPLES],
+            geology: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             min_height: f32::INFINITY,
             max_height: f32::NEG_INFINITY,
         };
         let origin_x = chunk_x * CHUNK_SIZE;
         let origin_z = chunk_z * CHUNK_SIZE;
+        let world_pos = |ix: usize, iz: usize| {
+            (
+                (origin_x + ix as i32 + SAMPLE_MIN) as f32,
+                (origin_z + iz as i32 + SAMPLE_MIN) as f32,
+            )
+        };
+        let mut samples = Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES);
         for iz in 0..COLUMN_SAMPLES {
             for ix in 0..COLUMN_SAMPLES {
-                let world_x = (origin_x + ix as i32 + SAMPLE_MIN) as f32;
-                let world_z = (origin_z + iz as i32 + SAMPLE_MIN) as f32;
+                let (world_x, world_z) = world_pos(ix, iz);
                 let sample = world.sample(world_x, world_z);
                 column.heights[iz][ix] = sample.height;
                 column.biomes[iz][ix] = world.biome_at(&sample);
+                samples.push(sample);
+            }
+        }
+        // Geologie braucht die Hangneigung, also erst nach allen Höhen. Neigung nur aus den
+        // Nachbarn in +x/+z: die gibt es für jedes von Dichte-Chunks genutzte Sample
+        // (bis lokal CHUNK_SIZE), und benachbarte Chunks rechnen so bitgleich.
+        let last = COLUMN_SAMPLES - 1;
+        for iz in 0..COLUMN_SAMPLES {
+            for ix in 0..COLUMN_SAMPLES {
+                let height = column.heights[iz][ix];
+                let along_x = column.heights[iz][ix.min(last - 1) + 1] - column.heights[iz][ix.min(last - 1)];
+                let along_z = column.heights[iz.min(last - 1) + 1][ix] - column.heights[iz.min(last - 1)][ix];
+                let slope = along_x.abs().max(along_z.abs());
+                let (world_x, world_z) = world_pos(ix, iz);
+                let sample = &samples[iz * COLUMN_SAMPLES + ix];
+                debug_assert_eq!(sample.height, height);
+                column
+                    .geology
+                    .push(world.geology.column(world_x, world_z, sample, column.biomes[iz][ix], slope));
             }
         }
         // Min/Max nur über den Bereich, den Dichte-Chunks nutzen (-1..=CHUNK_SIZE).
@@ -81,6 +110,12 @@ impl ColumnData {
     #[inline]
     pub fn height(&self, local_x: i32, local_z: i32) -> f32 {
         self.heights[(local_z - SAMPLE_MIN) as usize][(local_x - SAMPLE_MIN) as usize]
+    }
+
+    /// Geologie an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).
+    #[inline]
+    pub fn geology(&self, local_x: i32, local_z: i32) -> &ColumnGeology {
+        &self.geology[(local_z - SAMPLE_MIN) as usize * COLUMN_SAMPLES + (local_x - SAMPLE_MIN) as usize]
     }
 
     /// Biom an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).
@@ -136,14 +171,14 @@ impl DensityChunk {
         for iz in 0..n {
             for ix in 0..n {
                 let height = column.heights[iz][ix];
+                let geology = &column.geology[iz * COLUMN_SAMPLES + ix];
                 for iy in 0..n {
                     let world_y = (origin_y + iy as i32 + SAMPLE_MIN) as f32;
                     let index = (iz * n + iy) * n + ix;
                     let density = height - world_y;
                     values[index] = density;
-                    // Gesteinsschichten folgen in #44; bis dahin ist alles Feste "Gestein".
                     if density > 0.0 {
-                        materials[index] = MaterialId::STONE;
+                        materials[index] = material_at(geology, density, world_y);
                     }
                 }
             }
@@ -277,10 +312,18 @@ mod tests {
             for chunk_y in -3..6 {
                 let chunk = DensityChunk::from_column(&column, chunk_y);
                 chunk.assert_material_invariant();
-                // Bis #44 ist alles Feste "Gestein".
-                for (x, y, z) in [(0, 0, 0), (16, 16, 16), (32, 32, 32), (-1, -1, -1)] {
-                    let material = chunk.material(x, y, z);
-                    assert!(material.is_air() || material == MaterialId::STONE);
+                // Jedes feste Sample hat genau das Material, das die Geologie vorgibt.
+                let origin = chunk.origin();
+                for z in SAMPLE_MIN..=CHUNK_SIZE {
+                    for y in SAMPLE_MIN..=CHUNK_SIZE {
+                        for x in SAMPLE_MIN..=CHUNK_SIZE {
+                            let density = chunk.get(x, y, z);
+                            if density > 0.0 {
+                                let expected = material_at(column.geology(x, z), density, (origin.y + y) as f32);
+                                assert_eq!(chunk.material(x, y, z), expected);
+                            }
+                        }
+                    }
                 }
             }
         }
