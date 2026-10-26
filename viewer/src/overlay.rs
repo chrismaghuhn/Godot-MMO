@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::controls::WalkMode;
+use crate::dig::DigStatus;
 use crate::streaming::{CaveChunk, CaveJobs, ColumnJobs, ColumnMap, FarTileMarker, TerrainChunk, Tree};
 use crate::WorldRes;
 
@@ -43,6 +44,7 @@ struct PerfContext<'w> {
     cave_jobs: Res<'w, CaveJobs>,
     world: Res<'w, WorldRes>,
     walk: Res<'w, WalkMode>,
+    dig: Res<'w, DigStatus>,
     stats: ResMut<'w, PerfStats>,
 }
 
@@ -132,7 +134,8 @@ fn perf_overlay(
         "FPS {:>4.0}   Frame {:>5.2} ms   p95 {:>5.2} ms   max {:>5.2} ms\n\
          Spalten {:>3}   3D-Chunks {:>4} (Höhlen {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Fern {:>3}   Seed {}\n\
          X {:>7.1}   Y {:>6.1}   Z {:>7.1}   {}   [F3]\n\
-         {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}",
+         {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}\n\
+         [Klick] graben  [B] bauen  [T] {}   {}",
         fps,
         avg,
         p95,
@@ -155,6 +158,8 @@ fn perf_overlay(
         sample.height,
         sample.temperature,
         sample.humidity,
+        ctx.dig.tool_label(),
+        ctx.dig.last,
     );
     color.0 = if p95 <= 16.7 {
         Color::srgb(0.55, 1.0, 0.55)

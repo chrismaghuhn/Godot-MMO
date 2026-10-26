@@ -11,13 +11,13 @@ use bevy::{
 use terraforge_core::{
     mesh::ChunkMesh,
     vegetation::{TreePlacement, TreeStyle, plan_trees},
-    volume::ColumnData,
+    volume::{ChunkKind, ColumnData},
 };
 
-use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, TerrainChunk, Tree, camera_chunk};
+use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, DirtyChunks, TerrainChunk, Tree, camera_chunk};
 use crate::meshes::chunk_mesh_to_bevy;
 use crate::scene::SpawnPoint;
-use crate::{UndergroundRes, WorldRes};
+use crate::{EditsRes, UndergroundRes, WorldRes};
 
 const COLUMN_JOBS_IN_FLIGHT: usize = 8;
 const COLUMNS_READY_PER_FRAME: usize = 3;
@@ -34,6 +34,8 @@ struct ColumnBuild {
     /// (Chunk-Höhe, Mesh) für jeden 3D-Chunk mit Oberfläche.
     meshes: Vec<(i32, Mesh)>,
     trees: Vec<TreePlacement>,
+    /// Neubau nach Graben/Bauen: ersetzt die geladene Spalte.
+    rebuild: bool,
 }
 
 #[derive(Resource, Default)]
@@ -63,6 +65,8 @@ pub(super) struct ColumnContext<'w> {
     chunks: ResMut<'w, ColumnMap>,
     jobs: ResMut<'w, ColumnJobs>,
     cache: ResMut<'w, ColumnCache>,
+    edits: Res<'w, EditsRes>,
+    dirty: ResMut<'w, DirtyChunks>,
 }
 
 pub(super) fn stream_columns(
@@ -101,7 +105,7 @@ pub(super) fn stream_columns(
     });
     ctx.jobs.ready.retain(|build| {
         let position = build.position;
-        !ctx.chunks.0.contains_key(&position)
+        (build.rebuild || !ctx.chunks.0.contains_key(&position))
             && (position.x - center.x).abs() <= radius + 2
             && (position.y - center.y).abs() <= radius + 2
     });
@@ -129,7 +133,7 @@ pub(super) fn stream_columns(
         let position = build.position;
         let far = (position.x - center.x).abs() > radius + 1
             || (position.y - center.y).abs() > radius + 1;
-        if far || ctx.chunks.0.contains_key(&position) {
+        if far || (!build.rebuild && ctx.chunks.0.contains_key(&position)) {
             continue;
         }
         if inserted >= COLUMNS_READY_PER_FRAME {
@@ -137,6 +141,10 @@ pub(super) fn stream_columns(
             continue;
         }
         ctx.cache.0.insert(position, Arc::clone(&build.column));
+        // Neubau: alte Spalte erst entfernen, wenn die neue da ist (kein Flackern).
+        if let Some(old) = ctx.chunks.0.remove(&position) {
+            commands.entity(old).despawn();
+        }
         insert_column(
             &mut commands,
             &mut meshes,
@@ -148,7 +156,18 @@ pub(super) fn stream_columns(
     }
     ctx.jobs.ready = deferred;
 
+    // Neubau veränderter Spalten zuerst. Läuft schon ein Job für die Spalte, warten (er kennt
+    // die Änderung evtl. nicht); nicht geladene Spalten bekommen die Änderung beim Laden.
     let mut missing = Vec::new();
+    let dirty: Vec<IVec2> = ctx.dirty.columns.iter().copied().collect();
+    for position in dirty {
+        if !ctx.chunks.0.contains_key(&position) {
+            ctx.dirty.columns.remove(&position);
+        } else if !ctx.jobs.pending.contains_key(&position) {
+            ctx.dirty.columns.remove(&position);
+            missing.push((position, -1, true));
+        }
+    }
     for dz in -radius..=radius {
         for dx in -radius..=radius {
             let position = center + IVec2::new(dx, dz);
@@ -162,23 +181,41 @@ pub(super) fn stream_columns(
             {
                 continue;
             }
-            missing.push((position, dx * dx + dz * dz));
+            missing.push((position, dx * dx + dz * dz, false));
         }
     }
-    missing.sort_by_key(|(_, distance)| *distance);
+    missing.sort_by_key(|(_, distance, _)| *distance);
 
     let slots = COLUMN_JOBS_IN_FLIGHT.saturating_sub(ctx.jobs.pending.len());
-    for (position, _) in missing.into_iter().take(slots) {
+    for (position, _, rebuild) in missing.into_iter().take(slots) {
         let world = Arc::clone(&ctx.world.0);
         let underground = Arc::clone(&ctx.underground.0);
+        let edits = Arc::clone(&ctx.edits.0);
+        // Beim Neubau die vorhandenen Höhen wiederverwenden.
+        let cached = if rebuild { ctx.cache.0.get(&position).cloned() } else { None };
         let task = AsyncComputeTaskPool::get().spawn(async move {
-            let column = ColumnData::sample(&world, position.x, position.y);
-            // Nur Chunks mit Oberfläche (inkl. Höhleneingängen). Reine Höhlen-Chunks
-            // darunter lädt das Höhlen-Streaming in Kameranähe.
-            let meshes = column
-                .surface_chunks()
+            let column = cached.unwrap_or_else(|| Arc::new(ColumnData::sample(&world, position.x, position.y)));
+            let edits = edits.read().expect("Edits-Lock vergiftet");
+            // Chunks mit Oberfläche (inkl. Höhleneingängen) und veränderte Chunks, die laut
+            // Generator Luft sind (z. B. Gebautes). Massive Chunks – auch veränderte – lädt das
+            // Höhlen-Streaming in Kameranähe.
+            let mut heights: Vec<i32> = column.surface_chunks().collect();
+            for chunk_y in edits.touched_in_column(position.x, position.y) {
+                if column.classify(chunk_y) == ChunkKind::Air && !heights.contains(&chunk_y) {
+                    heights.push(chunk_y);
+                }
+            }
+            let meshes = heights
+                .into_iter()
                 .filter_map(|chunk_y| {
-                    let density = underground.density_chunk(&world, &column, chunk_y)?;
+                    let chunk_position = IVec3::new(position.x, chunk_y, position.y);
+                    let density = if edits.touches(chunk_position) {
+                        let mut chunk = underground.materials_chunk(&world, &column, chunk_y);
+                        edits.apply(&mut chunk);
+                        chunk
+                    } else {
+                        underground.density_chunk(&world, &column, chunk_y)?
+                    };
                     let mesh = ChunkMesh::build(&world, &column, &density);
                     (!mesh.is_empty()).then(|| (chunk_y, chunk_mesh_to_bevy(mesh)))
                 })
@@ -199,9 +236,10 @@ pub(super) fn stream_columns(
             });
             ColumnBuild {
                 position,
-                column: Arc::new(column),
+                column,
                 meshes,
                 trees,
+                rebuild,
             }
         });
         ctx.jobs.pending.insert(position, task);

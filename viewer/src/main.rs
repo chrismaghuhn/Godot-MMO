@@ -7,16 +7,18 @@
 //! - `controls`:  Laufmodus und Autopilot
 //! - `overlay`:   F3-Overlay
 //! - `devtools`:  Framelimiter, Auto-Screenshot
+//! - `dig`:       Graben und Bauen (Linksklick, `B`, Werkzeug mit `T`)
 //!
 //! Umgebungsvariablen: `TERRAFORGE_VIEW_RADIUS`, `TERRAFORGE_WIN_W/H`, `TERRAFORGE_PRESENT`,
 //! `TERRAFORGE_SPAWN_X/Z`, `TERRAFORGE_CAM_Y`, `TERRAFORGE_WALK`, `TERRAFORGE_AUTOPILOT`,
 //! `TERRAFORGE_NO_FOG`, `TERRAFORGE_FPS_CAP`, `TERRAFORGE_SHOT`, `TERRAFORGE_SHOT_AFTER`,
 //! `TERRAFORGE_SECRET_SEED` (geheimer Untergrund-Seed; ohne: unsicherer Entwickler-Seed),
 //! `TERRAFORGE_CAVE_RADIUS`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW` (Grad), `TERRAFORGE_HEADLAMP`,
-//! `TERRAFORGE_FAR` (0 = ohne Fernterrain).
+//! `TERRAFORGE_FAR` (0 = ohne Fernterrain), `TERRAFORGE_AUTODIG` (n-mal graben beim Start).
 
 mod controls;
 mod devtools;
+mod dig;
 mod meshes;
 mod overlay;
 mod scene;
@@ -31,12 +33,17 @@ use bevy::{
 };
 use terraforge_core::{
     WorldGen,
+    edits::WorldEdits,
     underground::{SecretSeed, Underground},
 };
 
 /// Die öffentliche Weltgenerierung, geteilt mit den Hintergrund-Jobs.
 #[derive(Resource)]
 pub struct WorldRes(pub Arc<WorldGen>);
+
+/// Spieler-Änderungen (#6), geteilt mit den Hintergrund-Jobs.
+#[derive(Resource, Default)]
+pub struct EditsRes(pub Arc<std::sync::RwLock<WorldEdits>>);
 
 /// Der geheime Untergrund (D-005). Im Spiel-Client gibt es das nicht, dort kommt der
 /// Untergrund vom Server; der Viewer erzeugt ihn als Debug-Tool selbst.
@@ -63,6 +70,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.58, 0.72, 0.86)))
         .insert_resource(WorldRes(Arc::new(world)))
         .insert_resource(UndergroundRes(Arc::new(underground)))
+        .init_resource::<EditsRes>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: format!("terraforge | Seed {seed}"),
@@ -78,6 +86,7 @@ fn main() {
             controls::ControlsPlugin,
             overlay::OverlayPlugin,
             devtools::DevToolsPlugin,
+            dig::DigPlugin,
         ))
         .add_systems(Startup, scene::setup_scene)
         .add_systems(Update, scene::water_follows_camera)

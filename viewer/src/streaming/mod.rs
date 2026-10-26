@@ -11,7 +11,7 @@ mod caves;
 mod columns;
 mod far;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use bevy::prelude::*;
@@ -33,6 +33,7 @@ impl Plugin for StreamingPlugin {
             .insert_resource(caves::CaveSettings::from_env())
             .init_resource::<caves::CaveMap>()
             .init_resource::<CaveJobs>()
+            .init_resource::<DirtyChunks>()
             .insert_resource(far::FarState::from_env())
             .add_systems(Update, (columns::stream_columns, caves::stream_caves, far::stream_far).chain());
     }
@@ -45,9 +46,17 @@ pub struct ChunkAssets {
     pub tree_meshes: Vec<Handle<Mesh>>,
 }
 
+/// Durch Graben/Bauen veränderte Chunks, die neu gebaut werden müssen (#6). Spalten bauen ihre
+/// Oberflächen- und Luft-Chunks neu, das Höhlen-Streaming die massiven.
+#[derive(Resource, Default)]
+pub struct DirtyChunks {
+    pub columns: HashSet<IVec2>,
+    pub caves: HashSet<IVec3>,
+}
+
 /// Höhen und Biome der geladenen Spalten, geteilt mit den Höhlen-Jobs.
 #[derive(Resource, Default)]
-pub struct ColumnCache(HashMap<IVec2, Arc<ColumnData>>);
+pub struct ColumnCache(pub HashMap<IVec2, Arc<ColumnData>>);
 
 #[derive(Component)]
 pub struct Tree;

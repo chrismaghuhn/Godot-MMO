@@ -14,9 +14,9 @@ use bevy::{
 };
 use terraforge_core::{mesh::ChunkMesh, underground::CAVE_MIN_Y, volume::ChunkKind};
 
-use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, TerrainChunk, camera_chunk};
+use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, DirtyChunks, TerrainChunk, camera_chunk};
 use crate::meshes::chunk_mesh_to_bevy;
-use crate::{UndergroundRes, WorldRes, env_parse};
+use crate::{EditsRes, UndergroundRes, WorldRes, env_parse};
 
 const CAVE_JOBS_IN_FLIGHT: usize = 6;
 const CAVES_READY_PER_FRAME: usize = 4;
@@ -71,6 +71,8 @@ pub(super) struct CaveContext<'w> {
     cache: Res<'w, ColumnCache>,
     map: ResMut<'w, CaveMap>,
     jobs: ResMut<'w, CaveJobs>,
+    edits: Res<'w, EditsRes>,
+    dirty: ResMut<'w, DirtyChunks>,
 }
 
 /// Chebyshev-Abstand: größte Abweichung über alle Achsen.
@@ -139,7 +141,10 @@ pub(super) fn stream_caves(
                 ))
                 .id()
         });
-        ctx.map.0.insert(build.position, entity);
+        // Neubau nach Graben: altes Mesh erst jetzt entfernen.
+        if let Some(Some(old)) = ctx.map.0.insert(build.position, entity) {
+            commands.entity(old).despawn();
+        }
     }
 
     // 3. Neue Jobs für unbearbeitete Positionen unter der Oberfläche.
@@ -170,13 +175,39 @@ pub(super) fn stream_caves(
     }
     missing.sort_by_key(|(position, _)| distance(*position, center));
 
+    // Veränderte massive Chunks zuerst neu bauen (nur bereits bearbeitete Positionen; der Rest
+    // bekommt die Änderung beim ersten Laden).
+    let dirty: Vec<IVec3> = ctx.dirty.caves.iter().copied().collect();
+    for position in dirty {
+        let column = ctx.cache.0.get(&position.xz()).cloned();
+        match column {
+            Some(column) if ctx.map.0.contains_key(&position) => {
+                if !ctx.jobs.pending.contains_key(&position) {
+                    ctx.dirty.caves.remove(&position);
+                    missing.insert(0, (position, column));
+                }
+            }
+            _ => {
+                ctx.dirty.caves.remove(&position);
+            }
+        }
+    }
+
     let slots = CAVE_JOBS_IN_FLIGHT.saturating_sub(ctx.jobs.pending.len());
     for (position, column) in missing.into_iter().take(slots) {
         let world = Arc::clone(&ctx.world.0);
         let underground = Arc::clone(&ctx.underground.0);
+        let edits = Arc::clone(&ctx.edits.0);
         let task = AsyncComputeTaskPool::get().spawn(async move {
-            let mesh = underground
-                .density_chunk(&world, &column, position.y)
+            let edits = edits.read().expect("Edits-Lock vergiftet");
+            let density = if edits.touches(position) {
+                let mut chunk = underground.materials_chunk(&world, &column, position.y);
+                edits.apply(&mut chunk);
+                Some(chunk)
+            } else {
+                underground.density_chunk(&world, &column, position.y)
+            };
+            let mesh = density
                 .map(|density| ChunkMesh::build(&world, &column, &density))
                 .filter(|mesh| !mesh.is_empty())
                 .map(chunk_mesh_to_bevy);
