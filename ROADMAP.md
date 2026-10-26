@@ -59,7 +59,7 @@ Phase 1 abgeschlossen am 2026-10-26.
 Plan und Begründung in D-021. Untergrund und Änderungen kommen schon hier von einem lokalen
 Server-Prozess, damit der Client nie `underground` enthält (D-005).
 
-- [ ] Streaming als engine-unabhängiger Chunk-Manager in den Core, Viewer darauf umstellen: #55
+- [x] Streaming als engine-unabhängiger Chunk-Manager in den Core, Viewer darauf umstellen: #55
 - [ ] gdext-Crate, Godot lädt `terraforge-core`: #10
 - [ ] Chunk-Mesh in Godot anzeigen, dann Streaming um die Kamera: #11
   - Fernterrain (D-015), Wasser-Shader, Debug-Overlay (Frametimes, Chunk-Zeiten)

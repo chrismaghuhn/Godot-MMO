@@ -578,8 +578,9 @@ an Bevy gebunden. Und Bewegung soll nach D-003/D-020 später auf dem Server lauf
   Schnittstelle; die Netzwerk-Bibliothek wird erst in Phase 6 gewählt (#25). Im Singleplayer
   startet Godot den Server als Kindprozess. Bewegung läuft in Phase 2 nur lokal.
 - **Streaming als Chunk-Manager im Core (#55):** `core/src/streaming/` entscheidet, welche Chunks
-  gebraucht werden, baut sie in Worker-Threads und gibt Events aus (`ShowChunk`, `HideChunk`,
-  `ShowFar`, `Trees`, `Visibility`). Der Core kennt keine Entities oder Nodes; Viewer und Godot
+  gebraucht werden, baut sie in Worker-Threads und gibt Events aus (umgesetzt als `ShowColumn`
+  mit Chunks und Bäumen, `RemoveColumn`, `ShowCave`, `RemoveCave`, `CaveVisibility`, `ShowFar`,
+  `RemoveFar`). Der Core kennt keine Entities oder Nodes; Viewer und Godot
   setzen die Events nur um. Aufbau nach D-011, eine Datei pro Aufgabe:
   `mod.rs` (API, `Config`), `wanted.rs` (gewünschte Chunks, reine Funktionen), `columns.rs`,
   `caves.rs`, `far.rs` (je eine Zustandsmaschine pro Chunk-Art), `culling.rs` (D-018),
@@ -606,3 +607,20 @@ an Bevy gebunden. Und Bewegung soll nach D-003/D-020 später auf dem Server lauf
 von Anfang an, Phase 6 baut darauf auf. Vor dem ersten Godot-Chunk steht ein Umbau des Viewers (#55),
 der ohne Verhaltensänderung bleiben muss (Hash über alle Chunk-Meshes). Für Release-Builds des
 Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
+
+**Umsetzung Streaming (#55, 2026-10-26):**
+- `Streamer<M>`: pro Frame `update(kamera)` und `drain_events()`. Meshes wandelt eine Funktion des
+  Aufrufers schon im Worker-Thread in das Engine-Format `M` um. Events pro Spalte statt pro Chunk,
+  damit ein Neubau die alte Spalte in einem Schritt ersetzt (kein Flackern).
+- Eigener Thread-Pool (`jobs.rs`, so viele Threads wie Bevys Pool: ein Viertel der Kerne, 1-4).
+  Verworfene Jobs laufen nicht mehr an, veraltete Ergebnisse werden an der Job-Nummer erkannt.
+  Ein Panic im Job wird erst weitergegeben, nachdem alle anderen Ergebnisse übernommen sind und
+  der Job vergessen ist; fängt die Engine ihn (gdext), läuft das Streaming weiter (Review-Fund).
+- `UndergroundSource` mit `PublicSurface` (nur Oberfläche) und, mit Feature, `Underground`.
+  Ohne Höhlen-Quelle werden massive Chunks nur geladen, wenn sie verändert wurden.
+- Viewer: `viewer/src/streaming.rs` (241 Zeilen) setzt nur noch Events um; größte Datei im
+  Core-Streaming 285 Zeilen.
+- Geprüft mit dem neuen Szenen-Hash (`TERRAFORGE_SCENE_HASH`): sechs Szenen (Spawn, kleiner
+  Radius, Höhle, Graben, Röntgen, ohne Fernterrain/Culling) sind Entity für Entity gleich wie
+  vorher. Benchmark (#9, 30 s Autopilot): Frames Ø 16,67 ms, p95 17,18 ms vorher wie nachher,
+  Job-Zeiten gleich.

@@ -2,7 +2,7 @@
 //!
 //! Module (je ein Bevy-Plugin bzw. Thema):
 //! - `scene`:     Start-Szene (Spawnpunkt, Kamera, Licht, Wasser, Materialien)
-//! - `streaming`: Chunk-Streaming um die Kamera
+//! - `streaming`: setzt die Events des Core-Streamers in Entities um (#55)
 //! - `meshes`:    Core-Meshes → Bevy-Meshes
 //! - `controls`:  Laufmodus und Autopilot
 //! - `overlay`:   F3-Overlay

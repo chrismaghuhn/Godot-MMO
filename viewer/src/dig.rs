@@ -7,7 +7,7 @@
 //!
 //! Der Zielpunkt kommt aus einem Strahl von der Kamera, der Voxel abtastet (Änderungen plus
 //! generierter Wert mit Untergrund – der Viewer ist Debug-Tool, D-005). Nach einer Änderung
-//! werden die betroffenen Chunks zum Neubau markiert (`DirtyChunks`).
+//! werden die betroffenen Chunks beim Streamer zum Neubau markiert (`mark_changed`).
 //!
 //! `TERRAFORGE_AUTODIG=n` gräbt beim Start n-mal in Blickrichtung (zum Testen).
 
@@ -18,10 +18,11 @@ use bevy::prelude::*;
 use terraforge_core::{
     MaterialId,
     edits::{Voxel, owner_chunk},
-    volume::{CHUNK_SIZE, ChunkKind, ColumnData, DensityChunk},
+    volume::{CHUNK_SIZE, ColumnData, DensityChunk},
 };
 
-use crate::streaming::{ColumnCache, DirtyChunks, StreamingSet, Tree};
+use crate::streaming::{StreamerRes, StreamingSet, Tree};
+use crate::xray::XrayDirty;
 use crate::{EditsRes, UndergroundRes, WorldRes, env_parse};
 
 const DIG_RADIUS: f32 = 2.0;
@@ -69,15 +70,15 @@ struct AutoDig {
 struct VoxelCache(HashMap<IVec3, Arc<DensityChunk>>);
 
 impl VoxelCache {
-    fn voxel(&mut self, world: &WorldRes, underground: &UndergroundRes, columns: &ColumnCache, voxel: IVec3) -> Voxel {
+    fn voxel(&mut self, world: &WorldRes, underground: &UndergroundRes, columns: &StreamerRes, voxel: IVec3) -> Voxel {
         let owner = owner_chunk(voxel);
         if !self.0.contains_key(&owner) {
             if self.0.len() > 64 {
                 self.0.clear();
             }
             let column = columns
-                .0
-                .get(&owner.xz())
+                .streamer
+                .column(owner.xz())
                 .cloned()
                 .unwrap_or_else(|| Arc::new(ColumnData::sample(&world.0, owner.x, owner.z)));
             let chunk = underground.0.materials_chunk(&world.0, &column, owner.y);
@@ -136,10 +137,10 @@ fn dig_input(
     camera: Query<&Transform, With<Camera3d>>,
     world: Res<WorldRes>,
     underground: Res<UndergroundRes>,
-    columns: Res<ColumnCache>,
+    mut columns: ResMut<StreamerRes>,
     edits: Res<EditsRes>,
     mut cache: ResMut<VoxelCache>,
-    mut dirty: ResMut<DirtyChunks>,
+    mut xray_dirty: ResMut<XrayDirty>,
     mut status: ResMut<DigStatus>,
     mut auto: ResMut<AutoDig>,
 ) {
@@ -215,18 +216,8 @@ fn dig_input(
         result.affected
     };
 
-    // Massive Chunks baut das Höhlen-Streaming neu, alle anderen die Spalte. Ist die Spalte
-    // nicht geladen, geht die Markierung an die Spalten und verfällt dort (beim Laden wird die
-    // Änderung ohnehin angewendet).
-    for chunk in affected {
-        dirty.xray.insert(chunk);
-        let solid = columns.0.get(&chunk.xz()).is_some_and(|column| column.classify(chunk.y) == ChunkKind::Solid);
-        if solid {
-            dirty.caves.insert(chunk);
-        } else {
-            dirty.columns.insert(chunk.xz());
-        }
-    }
+    xray_dirty.0.extend(affected.iter().copied());
+    columns.streamer.mark_changed(affected.iter().copied());
 }
 
 /// Reichweite fürs Fällen.
@@ -243,7 +234,7 @@ fn fell_tree(
     trees: Query<(Entity, &Tree, &GlobalTransform)>,
     world: Res<WorldRes>,
     underground: Res<UndergroundRes>,
-    columns: Res<ColumnCache>,
+    columns: Res<StreamerRes>,
     edits: Res<EditsRes>,
     mut cache: ResMut<VoxelCache>,
     mut status: ResMut<DigStatus>,

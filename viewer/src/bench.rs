@@ -11,37 +11,39 @@
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::Duration;
 
 use bevy::{app::AppExit, prelude::*, window::PrimaryWindow};
+use terraforge_core::streaming::JobKind;
 
 use crate::env_parse;
 
 const WARMUP_SECONDS: f32 = 4.0;
 
-/// Art eines Hintergrund-Jobs.
-#[derive(Clone, Copy, Debug)]
-pub enum JobKind {
-    Column,
-    Cave,
-    Far,
-}
-
-/// Dauer der Hintergrund-Jobs in ms, je Art. Global, damit Jobs auf anderen Threads eintragen
-/// können; nur im Benchmark relevant.
+/// Dauer der Hintergrund-Jobs in ms, je Art (Spalte, Höhle, Fern). Die Jobs laufen im
+/// Core-Streamer; der Viewer trägt ihre Dauer pro Frame ein. Nur im Benchmark relevant.
 static JOB_TIMES: Mutex<[Vec<f32>; 3]> = Mutex::new([Vec::new(), Vec::new(), Vec::new()]);
 
 /// Nur bei laufendem Benchmark sammeln, sonst wüchse `JOB_TIMES` die ganze Sitzung (Review-Fund).
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Trägt die Dauer eines Jobs ein (seit `start`), falls der Benchmark läuft.
-pub fn record_job(kind: JobKind, start: Instant) {
-    if !ACTIVE.load(Ordering::Relaxed) {
+/// Ob der Benchmark läuft (dann sammelt der Streamer die Job-Dauern).
+pub fn active() -> bool {
+    ACTIVE.load(Ordering::Relaxed)
+}
+
+/// Trägt die Dauer eines Jobs ein, falls der Benchmark läuft.
+pub fn record_job(kind: JobKind, duration: Duration) {
+    if !active() {
         return;
     }
-    let ms = start.elapsed().as_secs_f32() * 1000.0;
+    let index = match kind {
+        JobKind::Column => 0,
+        JobKind::Cave => 1,
+        JobKind::Far => 2,
+    };
     if let Ok(mut times) = JOB_TIMES.lock() {
-        times[kind as usize].push(ms);
+        times[index].push(duration.as_secs_f32() * 1000.0);
     }
 }
 

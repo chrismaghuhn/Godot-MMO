@@ -6,7 +6,7 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::controls::WalkMode;
 use crate::dig::DigStatus;
-use crate::streaming::{CaveChunk, CaveJobs, ColumnJobs, ColumnMap, CullStats, FarTileMarker, TerrainChunk, Tree};
+use crate::streaming::{CaveChunk, FarTileMarker, StreamerRes, TerrainChunk, Tree};
 use crate::WorldRes;
 
 pub struct OverlayPlugin;
@@ -39,13 +39,10 @@ impl Default for PerfStats {
 
 #[derive(SystemParam)]
 struct PerfContext<'w> {
-    chunks: Res<'w, ColumnMap>,
-    jobs: Res<'w, ColumnJobs>,
-    cave_jobs: Res<'w, CaveJobs>,
+    streamer: Res<'w, StreamerRes>,
     world: Res<'w, WorldRes>,
     walk: Res<'w, WalkMode>,
     dig: Res<'w, DigStatus>,
-    cull: Res<'w, CullStats>,
     stats: ResMut<'w, PerfStats>,
 }
 
@@ -124,6 +121,7 @@ fn perf_overlay(
     let recent = ctx.stats.frame_times.len().min(30);
     let recent_avg = ctx.stats.frame_times.iter().rev().take(recent).sum::<f32>() / recent as f32;
     let fps = 1000.0 / recent_avg.max(0.001);
+    let streaming = ctx.streamer.stats();
     let position = camera.single().map(|t| t.translation).unwrap_or(Vec3::ZERO);
     let mode = if ctx.walk.0 { "Lauf" } else { "Flug" };
     // Biom-Infos stehen hier statt im Fenstertitel: Titel-Updates blockieren
@@ -141,13 +139,13 @@ fn perf_overlay(
         avg,
         p95,
         max,
-        ctx.chunks.0.len(),
+        streaming.columns,
         counts.terrain.iter().count(),
         counts.caves.iter().count(),
-        ctx.cull.shown,
-        ctx.jobs.pending_count(),
-        ctx.jobs.ready_count(),
-        ctx.cave_jobs.pending_count(),
+        streaming.cull.shown,
+        streaming.column_jobs,
+        streaming.columns_ready,
+        streaming.cave_jobs,
         counts.trees.iter().count(),
         counts.far.iter().count(),
         ctx.world.0.cfg.seed,

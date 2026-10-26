@@ -20,7 +20,7 @@ use terraforge_core::{
     volume::{CHUNK_SIZE, ColumnData},
 };
 
-use crate::streaming::{ChunkAssets, ColumnCache, DirtyChunks};
+use crate::streaming::{ChunkAssets, StreamerRes};
 use crate::{EditsRes, UndergroundRes, WorldRes};
 
 const RADIUS: i32 = 1;
@@ -31,6 +31,7 @@ pub struct XrayPlugin;
 impl Plugin for XrayPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Xray>()
+            .init_resource::<XrayDirty>()
             .insert_resource(XrayStart(crate::env_parse::<u32>("TERRAFORGE_XRAY").unwrap_or(0) != 0))
             .add_systems(Update, xray);
     }
@@ -43,6 +44,10 @@ pub struct Xray {
     pending: HashMap<IVec3, Task<Option<Mesh>>>,
     material: Option<Handle<StandardMaterial>>,
 }
+
+/// Gegrabene/gebaute Chunks, deren Marker neu gebaut werden müssen.
+#[derive(Resource, Default)]
+pub struct XrayDirty(pub HashSet<IVec3>);
 
 #[derive(Component)]
 struct OreMarker;
@@ -59,16 +64,16 @@ fn xray(
     world: Res<WorldRes>,
     underground: Res<UndergroundRes>,
     edits: Res<EditsRes>,
-    columns: Res<ColumnCache>,
+    columns: Res<StreamerRes>,
     assets: Res<ChunkAssets>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut state: ResMut<Xray>,
     mut start: ResMut<XrayStart>,
-    mut dirty: ResMut<DirtyChunks>,
+    mut dirty: ResMut<XrayDirty>,
 ) {
     // Gegrabene/gebaute Chunks: Marker neu bauen (Review-Fund: sonst schwebten abgebaute Erze).
-    let changed = std::mem::take(&mut dirty.xray);
+    let changed = std::mem::take(&mut dirty.0);
     let start_now = std::mem::take(&mut start.0);
     if keys.just_pressed(KeyCode::KeyR) || start_now {
         state.enabled = !state.enabled;
@@ -137,7 +142,7 @@ fn xray(
             continue;
         }
         let (world, underground, edits) = (Arc::clone(&world.0), Arc::clone(&underground.0), Arc::clone(&edits.0));
-        let column = columns.0.get(&position.xz()).cloned();
+        let column = columns.streamer.column(position.xz()).cloned();
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let column = column.unwrap_or_else(|| Arc::new(ColumnData::sample(&world, position.x, position.z)));
             let mut chunk = underground.materials_chunk(&world, &column, position.y);
