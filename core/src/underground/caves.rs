@@ -19,6 +19,7 @@ use crate::volume::{CHUNK_SIZE, ColumnData, DensityChunk, SAMPLE_MIN};
 use crate::world::{WorldGen, smoothstep};
 
 use super::SecretSeed;
+use super::grid::CoarseGrid;
 
 /// Unterhalb davon gibt es keine Höhlen (Welt-y). Begrenzt auch das vertikale Streaming.
 pub const CAVE_MIN_Y: f32 = -160.0;
@@ -26,12 +27,6 @@ pub const CAVE_MIN_Y: f32 = -160.0;
 pub const SURFACE_SHELL: f32 = 4.0;
 /// Übergangszone unter der Schale, in der Höhlen langsam auf volle Größe anwachsen.
 const SHELL_FADE: f32 = 8.0;
-
-const GRID_STEP: i32 = 4;
-/// Lokale Koordinate des ersten Gitterpunkts (deckt das Rand-Sample -1 ab).
-const GRID_MIN: i32 = -GRID_STEP;
-/// Gitterpunkte pro Achse: lokal `-4, 0, 4, …, CHUNK_SIZE`.
-const GRID_POINTS: usize = ((CHUNK_SIZE - GRID_MIN) / GRID_STEP + 1) as usize;
 
 const CHEESE_THRESHOLD: f32 = 0.42;
 const TUNNEL_RADIUS: f32 = 0.11;
@@ -94,10 +89,7 @@ impl CaveNoise {
 }
 
 /// Höhlen-Dichte eines Chunks auf dem groben Gitter.
-pub(super) struct CaveGrid {
-    values: Vec<f32>,
-    min: f32,
-}
+pub(super) struct CaveGrid(pub(super) CoarseGrid);
 
 impl CaveGrid {
     /// Kann ein Chunk in Höhe `chunk_y` überhaupt Höhlen haben? (ohne Noise)
@@ -106,52 +98,22 @@ impl CaveGrid {
     }
 
     pub(super) fn build(noise: &CaveNoise, chunk_x: i32, chunk_y: i32, chunk_z: i32) -> Self {
-        let n = GRID_POINTS;
-        let mut values = vec![0.0; n * n * n];
-        let mut min = f32::INFINITY;
-        let origin = [chunk_x * CHUNK_SIZE, chunk_y * CHUNK_SIZE, chunk_z * CHUNK_SIZE];
-        let world = |axis: usize, index: usize| (origin[axis] + GRID_MIN + index as i32 * GRID_STEP) as f32;
-        for iz in 0..n {
-            for ix in 0..n {
-                let (x, z) = (world(0, ix), world(2, iz));
-                let region = noise.region(x, z);
-                for iy in 0..n {
-                    let value = noise.raw_density(x, world(1, iy), z, region);
-                    values[(iz * n + iy) * n + ix] = value;
-                    min = min.min(value);
-                }
-            }
-        }
-        Self { values, min }
+        Self(CoarseGrid::build(
+            chunk_x,
+            chunk_y,
+            chunk_z,
+            |x, z| noise.region(x, z),
+            |&region, x, y, z| noise.raw_density(x, y, z, region),
+        ))
     }
 
     /// Sicher: `false` bedeutet, dass der Chunk garantiert keine Höhle enthält.
     pub(super) fn may_have_caves(&self) -> bool {
-        self.min <= 0.0
+        self.0.min() <= 0.0
     }
 
-    /// Trilinear interpolierte Höhlen-Dichte an lokaler Sample-Koordinate.
     fn sample(&self, x: i32, y: i32, z: i32) -> f32 {
-        let n = GRID_POINTS;
-        let cell = |v: i32| {
-            let offset = v - GRID_MIN;
-            let index = ((offset / GRID_STEP) as usize).min(n - 2);
-            let t = (offset - index as i32 * GRID_STEP) as f32 / GRID_STEP as f32;
-            (index, t)
-        };
-        let (ix, tx) = cell(x);
-        let (iy, ty) = cell(y);
-        let (iz, tz) = cell(z);
-        let at = |dx: usize, dy: usize, dz: usize| self.values[((iz + dz) * n + iy + dy) * n + ix + dx];
-        // Gewichtete Form statt `a + (b - a) * t`: exakt `a` bei t = 0 und `b` bei t = 1, damit
-        // benachbarte Chunks an gemeinsamen Samples bitgleich rechnen. Mit Gewichten >= 0 bleibt
-        // das Ergebnis > 0, wenn beide Werte > 0 sind (Voraussetzung für `may_have_caves`).
-        let lerp = |a: f32, b: f32, t: f32| a * (1.0 - t) + b * t;
-        let x00 = lerp(at(0, 0, 0), at(1, 0, 0), tx);
-        let x10 = lerp(at(0, 1, 0), at(1, 1, 0), tx);
-        let x01 = lerp(at(0, 0, 1), at(1, 0, 1), tx);
-        let x11 = lerp(at(0, 1, 1), at(1, 1, 1), tx);
-        lerp(lerp(x00, x10, ty), lerp(x01, x11, ty), tz)
+        self.0.sample(x, y, z)
     }
 }
 
@@ -254,17 +216,6 @@ mod tests {
         CaveNoise::new(&SecretSeed::from_u64(0xCAFE))
     }
 
-    #[test]
-    fn interpolation_hits_grid_points_exactly() {
-        let grid = CaveGrid::build(&noise(), 3, -2, -5);
-        let n = GRID_POINTS;
-        for (ix, iy, iz) in [(0, 0, 0), (1, 2, 3), (n - 1, n - 1, n - 1), (4, 9, 0)] {
-            let local = |i: usize| GRID_MIN + i as i32 * GRID_STEP;
-            let expected = grid.values[(iz * n + iy) * n + ix];
-            assert_eq!(grid.sample(local(ix), local(iy), local(iz)), expected);
-        }
-    }
-
     /// Wenn das Gitter keine Höhle meldet, darf auch kein interpolierter Wert <= 0 sein.
     #[test]
     fn may_have_caves_is_a_safe_check() {
@@ -325,6 +276,6 @@ mod tests {
         // Auch wenn jemand das Gitter dort trotzdem baut: alles fest.
         let grid = CaveGrid::build(&noise(), 0, lowest, 0);
         assert!(!grid.may_have_caves());
-        assert!(grid.values.iter().all(|&v| v > 100.0));
+        assert!(grid.0.values.iter().all(|&v| v > 100.0));
     }
 }
