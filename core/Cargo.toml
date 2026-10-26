@@ -1,0 +1,12 @@
+[package]
+name = "terraforge-core"
+description = "Deterministische Weltgenerierung (Terrain, Biome, Vegetation), engine-unabhaengig"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fastnoise-lite = "1.1"
+serde = { version = "1", features = ["derive"] }
+ron = "0.12"
+# Gleiche Version wie bevy_math, damit Vec3/Quat im Viewer ohne Konvertierung passen.
+glam = "0.33"

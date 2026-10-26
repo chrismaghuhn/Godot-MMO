@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use image::{Rgb, RgbImage};
-use terraforge::{FamilyKind, WorldGen};
+use terraforge_core::{FamilyKind, WorldGen};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 river_wide += 1;
             }
 
-            let family_color = world.biome_color(terraforge::BiomeRef {
+            let family_color = world.biome_color(terraforge_core::BiomeRef {
                 kind: biome.kind,
                 variant: 0,
             });
@@ -153,7 +153,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn heights(samples: &[terraforge::ColumnSample], res: usize, i: usize, j: usize) -> f32 {
+fn heights(samples: &[terraforge_core::ColumnSample], res: usize, i: usize, j: usize) -> f32 {
     samples[j * res + i].height
 }
 

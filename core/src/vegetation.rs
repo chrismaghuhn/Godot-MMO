@@ -1,4 +1,4 @@
-use bevy::math::{Quat, Vec3};
+use glam::{Quat, Vec3};
 
 use crate::biome::FamilyKind;
 use crate::world::BiomeRef;

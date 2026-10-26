@@ -4313,14 +4313,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "terraforge"
+name = "terraforge-core"
+version = "0.1.0"
+dependencies = [
+ "fastnoise-lite",
+ "glam",
+ "ron",
+ "serde",
+]
+
+[[package]]
+name = "terraforge-viewer"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "fastnoise-lite",
  "image",
- "ron",
- "serde",
+ "terraforge-core",
 ]
 
 [[package]]

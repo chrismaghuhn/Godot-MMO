@@ -17,7 +17,7 @@ use bevy::{
     window::WindowResolution,
 };
 
-use terraforge::{
+use terraforge_core::{
     BiomeRef, FamilyKind, WorldGen,
     vegetation::{TreeGeo, TreePlacement, TreeStyle, build_tree_geometry, plan_trees},
 };
