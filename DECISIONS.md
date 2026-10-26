@@ -431,3 +431,31 @@ gegrabenen Löchern (#7). Bäume sollen später gefällt werden (Axt, #21) und d
 **Folgen:** Mit Höhlen entfallen ≈ 0,1 % der Bäume (an großen Eingängen ≈ 3 %), ohne Höhlen und
 Spieler-Änderungen keiner (geprüft über 33.119 Bäume; erste Fassung verglich mit der Wurzelhöhe und
 entfernte an Hängen 0,04 %).
+
+## D-018: Cave Culling über Seiten-Verbindungen, Erz-Filter mit 26 Nachbarn
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Unter der Oberfläche wurden alle geladenen Höhlen-Chunks gezeichnet, auch völlig
+abgeschlossene (#8, D-006). Außerdem musste der Server-Filter für Erze (#46, D-005/D-013) genau
+festlegen, wann ein Erz "freiliegt".
+
+**Entscheidung:**
+- **Cave Culling:** Jeder Chunk speichert, welche seiner 6 Seiten durch Luft miteinander verbunden
+  sind (`occlusion::face_links`, Samples `0..=32`, also inklusive der mit dem Nachbarn geteilten
+  Lage). Eine Breitensuche von der Kamera aus geht nur durch verbundene Seiten und darf eine
+  eingeschlagene Richtung nicht umkehren (wie Minecraft). Nur erreichte Höhlen-Chunks werden gezeichnet.
+  Reine Luft und fehlende Daten gelten als offen (lieber zu viel zeichnen als Löcher), massive Chunks
+  ohne Daten als geschlossen. Chunks jenseits der Suchgrenze (Höhlenradius + 2) bleiben sichtbar.
+  Im Röntgenmodus und mit `TERRAFORGE_CULL=0` wird nicht gecullt.
+- **Erz-Filter:** Ein Erz-Voxel liegt frei, wenn einer seiner **26** Nachbarn Luft ist. Das ist genau
+  die Menge, die Surface Nets einfärben kann. Geprüft wird, dass Geometrie und Vertex-Materialien
+  von vollem und gefiltertem Chunk identisch sind.
+
+**Folgen:**
+- Oberfläche: ≈ 11 von 129 Höhlen-Chunks sichtbar, in einer Höhle ≈ 35 von 175 (bzw. 91 von 269);
+  Screenshots mit und ohne Culling sind pixelgleich.
+- Clients erhalten ≈ 3,8 % der Erz-Voxel, alle höchstens √3 m von Luft entfernt, die sie ohnehin
+  sehen. Das liegt im Rahmen von D-005.
+- Review-Funde (weggecullte Wände an Nachbar-Höhlen, unsichtbare tiefe Schächte, fehlende
+  Erzflächen durch 6er-Nachbarschaft, wachsende Job-Messwerte, veraltete Röntgen-Marker) – behoben.

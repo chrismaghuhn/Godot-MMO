@@ -39,18 +39,20 @@ Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-V
 - [x] Mesh-Erzeugung mit Surface Nets: #2
 - [x] Trennung öffentliche/geheime Generierung (Oberfläche vs. Untergrund, D-005): #3
 - [x] Höhlen: Kavernen + Tunnel + Eingänge an der Oberfläche: #4
-  - [ ] Kleine Höhlenfetzen: #41
+  - [x] Kleine Höhlenfetzen: #41
   - [x] ShellHeights pro Spalte cachen: #42
-- [ ] Gestein und Erze (D-013): #5
+- [x] Gestein und Erze (D-013): #5
   - [x] Material-Kanal pro Voxel + materials.ron: #43
   - [x] Gesteinsschichten und Oberflächenmaterial (öffentlich): #44
   - [x] Provinzen, Erz-Vorkommen, Reinheit (geheim): #45
-  - [ ] Sichtbarkeits-Filter (Erze erst zeigen, wenn sie freiliegen): #46
-  - [ ] Viewer: Materialfarben, Röntgenmodus, Statistik: #47
+  - [x] Sichtbarkeits-Filter (Erze erst zeigen, wenn sie freiliegen, D-018): #46
+  - [x] Viewer: Materialfarben, Röntgenmodus, Statistik: #47
 - [x] Graben/Bauen: Änderungen pro Voxel, Chunk neu vermaschen (D-016): #6
 - [x] Bäume auf die Volumen-Oberfläche setzen, stabile IDs, Fällen vorbereitet (D-017): #7
-- [ ] Cave Culling (Sichtbarkeit über Chunk-Verbindungen, D-006): #8
-- [ ] Performance-Messung als festes Werkzeug (Frametimes, Chunk-Zeiten): #9
+- [x] Cave Culling (Sichtbarkeit über Chunk-Verbindungen, D-006, D-018): #8
+- [x] Performance-Messung als festes Werkzeug (Frametimes, Chunk-Zeiten): #9
+
+Phase 1 abgeschlossen am 2026-10-26.
 
 ## Phase 2: Godot-Client
 
