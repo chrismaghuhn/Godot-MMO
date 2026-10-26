@@ -9,13 +9,14 @@
 //! - `bench`:     Benchmark-Modus (`TERRAFORGE_BENCH=sekunden`, #9)
 //! - `devtools`:  Framelimiter, Auto-Screenshot
 //! - `dig`:       Graben und Bauen (Linksklick, `B`, Werkzeug mit `T`)
+//! - `xray`:      Röntgenmodus für Erze (`R`, #47)
 //!
 //! Umgebungsvariablen: `TERRAFORGE_VIEW_RADIUS`, `TERRAFORGE_WIN_W/H`, `TERRAFORGE_PRESENT`,
 //! `TERRAFORGE_SPAWN_X/Z`, `TERRAFORGE_CAM_Y`, `TERRAFORGE_WALK`, `TERRAFORGE_AUTOPILOT`,
 //! `TERRAFORGE_NO_FOG`, `TERRAFORGE_FPS_CAP`, `TERRAFORGE_SHOT`, `TERRAFORGE_SHOT_AFTER`,
 //! `TERRAFORGE_SECRET_SEED` (geheimer Untergrund-Seed; ohne: unsicherer Entwickler-Seed),
 //! `TERRAFORGE_CAVE_RADIUS`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW` (Grad), `TERRAFORGE_HEADLAMP`,
-//! `TERRAFORGE_FAR` (0 = ohne Fernterrain), `TERRAFORGE_AUTODIG` (n-mal graben beim Start), `TERRAFORGE_BENCH`/`TERRAFORGE_BENCH_OUT`.
+//! `TERRAFORGE_FAR` (0 = ohne Fernterrain), `TERRAFORGE_AUTODIG` (n-mal graben beim Start), `TERRAFORGE_BENCH`/`TERRAFORGE_BENCH_OUT`, `TERRAFORGE_XRAY` (Röntgenmodus beim Start).
 
 mod bench;
 mod controls;
@@ -25,6 +26,7 @@ mod meshes;
 mod overlay;
 mod scene;
 mod streaming;
+mod xray;
 
 use std::sync::Arc;
 
@@ -90,6 +92,7 @@ fn main() {
             devtools::DevToolsPlugin,
             dig::DigPlugin,
             bench::BenchPlugin,
+            xray::XrayPlugin,
         ))
         .add_systems(Startup, scene::setup_scene)
         .add_systems(Update, scene::water_follows_camera)

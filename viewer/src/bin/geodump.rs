@@ -3,6 +3,7 @@
 //!   und Erzen (vollständiges Material, auch im massiven Fels)
 //! - Oberflächenkarte: Material direkt unter der Oberfläche (Boden bzw. freiliegender Fels)
 //! - Provinzkarte: geologische Provinzen, eingefärbt nach ihrem seltensten Erz
+//! - Erz-Statistik (#47): gemessene Erz-Voxel pro Provinz aus Stichproben-Chunks
 //!
 //! Aufruf: `cargo run --release --bin geodump -- [seed] [z] [x_start] [breite] [karte_radius]`
 //! Höhlen kommen aus dem unsicheren Entwickler-Seed (nur Debug).
@@ -47,6 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("geschrieben: {section_path}, {map_path}, {provinces_path}");
     print_provinces(&world, &underground, map_radius);
+    print_ore_statistics(&world, &underground, map_radius);
     let total: usize = counts.values().sum();
     let mut rows: Vec<_> = counts.into_iter().collect();
     rows.sort_by_key(|row| std::cmp::Reverse(row.1));
@@ -176,4 +178,62 @@ fn print_provinces(world: &WorldGen, underground: &Underground, radius: i32) {
             .collect();
         println!("  {:?}: {}", province.id, ores.join(", "));
     }
+}
+
+/// Erz-Voxel pro Provinz und Erzart, gemessen in jedem 4. Spalten-Chunk (y -4..=1), plus
+/// durchschnittliche Reinheit am Fundort.
+fn print_ore_statistics(world: &WorldGen, underground: &Underground, radius: i32) {
+    use std::collections::BTreeMap;
+    use terraforge_core::underground::OreKind;
+    let mut counts: BTreeMap<(i32, i32), BTreeMap<OreKind, (u32, f32)>> = BTreeMap::new();
+    let mut rock = 0u64;
+    let chunks = radius / CHUNK_SIZE;
+    for chunk_z in (-chunks..chunks).step_by(4) {
+        for chunk_x in (-chunks..chunks).step_by(4) {
+            let column = ColumnData::sample(world, chunk_x, chunk_z);
+            for chunk_y in -4..=1 {
+                let chunk = underground.materials_chunk(world, &column, chunk_y);
+                let origin = chunk.origin();
+                for z in 0..CHUNK_SIZE {
+                    for x in 0..CHUNK_SIZE {
+                        let (wx, wz) = ((origin.x + x) as f32, (origin.z + z) as f32);
+                        for y in 0..CHUNK_SIZE {
+                            let material = chunk.material(x, y, z);
+                            if material.is_air() {
+                                continue;
+                            }
+                            rock += 1;
+                            let Some(kind) = OreKind::from_material(material) else { continue };
+                            let province = underground.province_at(world, wx, wz).id;
+                            let purity = underground.purity(world, wx, wz, material).unwrap_or(0.0);
+                            let entry = counts.entry(province).or_default().entry(kind).or_insert((0, 0.0));
+                            entry.0 += 1;
+                            entry.1 += purity;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    println!("Erz-Statistik (Stichprobe, {rock} feste Voxel):");
+    let mut totals: BTreeMap<OreKind, u32> = BTreeMap::new();
+    for (province, ores) in &counts {
+        let line: Vec<String> = ores
+            .iter()
+            .map(|(kind, (count, purity))| {
+                *totals.entry(*kind).or_default() += count;
+                let name = world.materials.get(kind.material()).map_or("?", |m| m.name.as_str());
+                format!("{name} {count} (Reinheit Ø {:.0} %)", purity / *count as f32 * 100.0)
+            })
+            .collect();
+        println!("  {province:?}: {}", line.join(", "));
+    }
+    let summary: Vec<String> = totals
+        .iter()
+        .map(|(kind, count)| {
+            let name = world.materials.get(kind.material()).map_or("?", |m| m.name.as_str());
+            format!("{name} {:.3} %", *count as f64 * 100.0 / rock.max(1) as f64)
+        })
+        .collect();
+    println!("  gesamt (Anteil an festen Voxeln): {}", summary.join(", "));
 }
