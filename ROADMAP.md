@@ -113,6 +113,9 @@ Aktueller Stand immer in den [offenen Issues](https://github.com/chrismaghuhn/Go
 - Flussufer sehr steil: #35
 - Gebirgsränder blockartig: #36
 - 8 doppelte Biom-Namen: #37
+- Viewer ruckelt, wenn gleichzeitig Godot offen ist: #38
+- Umlaute fehlen im Viewer-Overlay: #39
+- Palmen an verschneiten Küsten: #40
 
 ---
 
