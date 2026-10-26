@@ -56,11 +56,17 @@ Phase 1 abgeschlossen am 2026-10-26.
 
 ## Phase 2: Godot-Client
 
+Plan und Begründung in D-021. Untergrund und Änderungen kommen schon hier von einem lokalen
+Server-Prozess, damit der Client nie `underground` enthält (D-005).
+
+- [ ] Streaming als engine-unabhängiger Chunk-Manager in den Core, Viewer darauf umstellen: #55
 - [ ] gdext-Crate, Godot lädt `terraforge-core`: #10
 - [ ] Chunk-Mesh in Godot anzeigen, dann Streaming um die Kamera: #11
+  - Fernterrain (D-015), Wasser-Shader, Debug-Overlay (Frametimes, Chunk-Zeiten)
 - [ ] Bäume über `MultiMeshInstance3D`: #12
-- [ ] Laufen, Fliegen, Kollision mit dem Terrain: #13
-- [ ] Graben/Bauen im Client: #14
+- [ ] Lokaler Server-Prozess (`server/`, `protocol/`): Untergrund-Chunks, Erz-Filter, Cave Culling im Client: #56
+- [ ] Laufen, Fliegen, Kollision mit dem Terrain, Bewegung im Core: #13
+- [ ] Graben/Bauen im Client, geprüft vom Server: #14
 
 Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 
@@ -95,6 +101,7 @@ Wenn nicht: hier nachbessern, bevor Netzwerk dazukommt.
 ## Phase 6: Multiplayer (2-10 Spieler)
 
 - [ ] `server/`: headless Rust-Server, autoritativ, Clients senden nur Eingaben (D-003): #25
+  - Vorgezogen in Phase 2 (#56): lokaler Server-Prozess, Protokoll, Untergrund-Streaming
 - [ ] Interest Management + Untergrund-Streaming, Erze erst senden, wenn sie freiliegen (D-005): #26
 - [ ] Persistenz (Start: SQLite): #27
 

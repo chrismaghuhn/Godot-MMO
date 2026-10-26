@@ -560,3 +560,49 @@ Kamera-Stabilisierung sind bei First-Person mit echtem Körper eigene Aufgaben.
 **Ergänzung (2026-10-26):** Vereinfachte Hände mit Daumen plus einer Fingergruppe (wenige
 Knochen); Greifposen werden prozedural erzeugt. Volle Finger wären in First-Person schöner, aber
 deutlich mehr Animationsaufwand.
+
+## D-021: Godot-Client mit lokalem Server, Streaming und Bewegung im Core
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Phase 2 bringt die Welt in den Godot-Client (#10-#14). Drei Dinge waren offen:
+Nach D-005 darf der Client das Feature `underground` nicht enthalten, ohne Server gäbe es dort
+also keine Höhlen und Erze. Das Streaming im Viewer (`viewer/src/streaming/`, ~1.300 Zeilen) ist
+an Bevy gebunden. Und Bewegung soll nach D-003/D-020 später auf dem Server laufen.
+
+**Entscheidung:**
+- **Lokaler Server-Prozess schon in Phase 2 (#56):** `server/` (headless, mit `underground`) und
+  `protocol/` (gemeinsame Nachrichtentypen). Der Client erzeugt die Oberfläche selbst, der Server
+  liefert Untergrund-Chunks in der Nähe (Erze gefiltert nach D-018) und prüft Graben/Bauen.
+  Transport vorerst TCP auf localhost mit längen-präfixierten Nachrichten hinter einer
+  Schnittstelle; die Netzwerk-Bibliothek wird erst in Phase 6 gewählt (#25). Im Singleplayer
+  startet Godot den Server als Kindprozess. Bewegung läuft in Phase 2 nur lokal.
+- **Streaming als Chunk-Manager im Core (#55):** `core/src/streaming/` entscheidet, welche Chunks
+  gebraucht werden, baut sie in Worker-Threads und gibt Events aus (`ShowChunk`, `HideChunk`,
+  `ShowFar`, `Trees`, `Visibility`). Der Core kennt keine Entities oder Nodes; Viewer und Godot
+  setzen die Events nur um. Aufbau nach D-011, eine Datei pro Aufgabe:
+  `mod.rs` (API, `Config`), `wanted.rs` (gewünschte Chunks, reine Funktionen), `columns.rs`,
+  `caves.rs`, `far.rs` (je eine Zustandsmaschine pro Chunk-Art), `culling.rs` (D-018),
+  `jobs.rs` (einziger Ort mit Threads), `dirty.rs` (Änderungen → Neubau), `source.rs`
+  (`trait UndergroundSource`: lokal im Viewer, übers Netz in Godot), `tests.rs`.
+  Konstanten stehen in `Config` statt verstreut. Ohne `underground` kennt das Streaming nur den Trait.
+- **Bewegung und Kollision im Core (#13):** kinematischer Controller mit Kollision gegen das
+  Dichtefeld, damit der Server ihn in Phase 6 unverändert nutzen kann. Godot liefert Eingabe und Kamera.
+- **Godot-Seite:** gdext-Crate mit einer Datei pro Godot-Klasse (Terrain, Bäume, Spieler, Netz,
+  Debug). Hintergrund-Arbeit in Rust-Threads, Godot-Objekte nur im Hauptthread mit Upload-Budget
+  pro Frame. Zuerst ein `MeshInstance3D` pro Chunk, RenderingServer nur, wenn Messungen es nahelegen.
+  Vorerst nur Linux-Builds.
+- **Umfang Phase 2** zusätzlich zu Chunks, Bäumen, Bewegung und Graben: Fernterrain (D-015),
+  Cave Culling (D-018), Wasser-Shader, Debug-Overlay (Frametimes, Chunk-Zeiten wie #9).
+
+**Alternativen:**
+- Integrierter Server im selben Prozess (wie Minecraft): weniger Aufwand, aber die Netzwerk-Grenze
+  wäre nicht echt getestet und der Untergrund im Client-Prozess.
+- Phase 2 nur mit Oberfläche: am einfachsten, verschiebt das Problem aber nur nach Phase 3.
+- Streaming im gdext-Crate neu schreiben: schneller begonnen, aber zwei Versionen, die auseinanderlaufen.
+- `CharacterBody3D` mit Jolt: schneller spielbar, für den autoritativen Server aber neu zu bauen.
+
+**Folgen:** Phase 2 wird größer, ein Teil von #25/#26 ist vorgezogen. Die Netzwerk-Grenze besteht
+von Anfang an, Phase 6 baut darauf auf. Vor dem ersten Godot-Chunk steht ein Umbau des Viewers (#55),
+der ohne Verhaltensänderung bleiben muss (Hash über alle Chunk-Meshes). Für Release-Builds des
+Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
