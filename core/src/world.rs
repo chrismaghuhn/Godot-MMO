@@ -3,6 +3,14 @@ use crate::geology::Geology;
 use crate::material::MaterialRegistry;
 use crate::noise::NoiseBank;
 
+/// Wassertiefe in der Flussmitte.
+const RIVER_DEPTH: f32 = 1.25;
+/// Anstieg des Flussufers pro Einheit Fluss-Rauschen. Das Rauschen ändert sich im Mittel um
+/// ~0.006 pro Meter, das Ufer steigt damit typisch ~0.2 m pro Meter (~11°).
+const BANK_RISE: f32 = 35.0;
+/// Weichheit des Übergangs vom Ufer ins ursprüngliche Gelände (Meter).
+const BANK_BLEND: f32 = 4.0;
+
 #[derive(Clone, Copy, Debug)]
 pub struct WorldConfig {
     pub seed: u32,
@@ -33,6 +41,8 @@ pub struct ColumnSample {
     pub crystal: f32,
     pub fungal: f32,
     pub river: f32,
+    /// Wie viele Meter das Flussufer das Gelände hier abgesenkt hat (#35).
+    pub river_cut: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,19 +100,24 @@ impl WorldGen {
         height += raw.detail * hill_amp;
         height += continental * 5.0;
 
+        let lowland = smoothstep(sea + 55.0, sea + 3.0, height) * smoothstep(sea - 1.0, sea + 0.5, height);
         let river_band = 1.0 - smoothstep(0.0, 0.030, raw.river.abs());
-        let river = river_band
-            * smoothstep(sea + 55.0, sea + 3.0, height)
-            * smoothstep(sea - 1.0, sea + 0.5, height);
-        if river > 0.0 {
-            height += (sea - 1.25 - height) * river;
+        let river = river_band * lowland;
+        let uncarved = height;
+        if lowland > 0.0 {
+            // Flussufer (#35): Das Gelände wird auf ein Ufer mit fester Steigung abgesenkt, das von
+            // der Flussmitte aus ansteigt. Vorher wurde es über das schmale Flussband auf
+            // Meereshöhe gezogen, dadurch fiel das Ufer bei hohem Gelände fast senkrecht ab.
+            let bank = sea - RIVER_DEPTH + BANK_RISE * raw.river.abs();
+            height += (smooth_min(height, bank, BANK_BLEND) - height) * lowland;
         }
 
-        let altitude = (height - sea).max(0.0);
+        // Klima nach dem Gelände ohne Flussufer, damit Flüsse die Biome nicht verschieben.
+        let altitude = (uncarved - sea).max(0.0);
         let temperature =
             (raw.temperature * 1.05 + raw.realm * 0.30 + 0.02 - altitude * 0.0035).clamp(-1.0, 1.0);
         let humidity = (raw.humidity * 1.35 - raw.realm * 0.25
-            + 0.30 * smoothstep(70.0, 0.0, height - sea))
+            + 0.30 * smoothstep(70.0, 0.0, uncarved - sea))
         .clamp(-1.0, 1.0);
 
         let volcanic = smoothstep(
@@ -129,6 +144,7 @@ impl WorldGen {
             crystal,
             fungal,
             river,
+            river_cut: uncarved - height,
         }
     }
 
@@ -175,7 +191,8 @@ impl WorldGen {
         if sample.river > 0.35 && sample.height < sea + 0.25 {
             return FamilyKind::Freshwater;
         }
-        if sample.height < sea + 6.0 {
+        // Abgesenkte Flussufer zählen nicht als Küste, sonst säumen Strände jeden Fluss.
+        if sample.height + sample.river_cut < sea + 6.0 {
             return FamilyKind::Coast;
         }
         if sample.volcanic > 0.58 && sample.height > sea + 5.0 {
@@ -199,7 +216,7 @@ impl WorldGen {
         if sample.humidity < -0.26 && sample.temperature > 0.02 {
             return FamilyKind::Desert;
         }
-        if sample.humidity > 0.42 && sample.height < sea + 12.0 {
+        if sample.humidity > 0.42 && sample.height + sample.river_cut < sea + 12.0 {
             return FamilyKind::Swamp;
         }
         if sample.temperature < -0.20 {
@@ -257,6 +274,12 @@ fn slot(t: f32, count: usize) -> usize {
     ((t.clamp(0.0, 0.999_999) * count as f32) as usize).min(count - 1)
 }
 
+/// Minimum mit weichem Übergang der Breite `k` (polynomielles smooth-min).
+fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
+    let h = (k - (a - b).abs()).max(0.0) / k;
+    a.min(b) - h * h * k * 0.25
+}
+
 pub fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -293,5 +316,31 @@ mod tests {
             .count();
         let share = crystal as f64 / land.len() as f64;
         assert!((0.005..0.05).contains(&share), "Kristall-Anteil {share:.4}");
+    }
+
+    #[test]
+    fn river_banks_are_mostly_gentle() {
+        // #35: Vorher waren ~90 % der eingeschnittenen Ufer steiler als 30°.
+        let world = WorldGen::new(42);
+        let sea = world.cfg.sea_level;
+        let (mut banks, mut steep) = (0usize, 0usize);
+        for (x, z, sample) in land_samples(&world, 8_000.0, 400) {
+            if sample.river_cut < 1.0 {
+                continue;
+            }
+            let dx = world.column_height(x + 0.5, z) - world.column_height(x - 0.5, z);
+            let dz = world.column_height(x, z + 0.5) - world.column_height(x, z - 0.5);
+            banks += 1;
+            if dx.hypot(dz).atan().to_degrees() > 30.0 {
+                steep += 1;
+            }
+            if sample.height + sample.river_cut >= sea + 6.0 {
+                let kind = world.biome_at(&sample).kind;
+                assert_ne!(kind, FamilyKind::Coast, "Flussufer im Inland bei ({x},{z}) ist Küste");
+            }
+        }
+        assert!(banks > 100, "zu wenige Uferproben: {banks}");
+        let share = steep as f64 / banks as f64;
+        assert!(share < 0.15, "steile Ufer: {share:.3} von {banks}");
     }
 }

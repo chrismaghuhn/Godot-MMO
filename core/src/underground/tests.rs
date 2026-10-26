@@ -35,12 +35,15 @@ fn effective(world: &WorldGen, underground: &Underground, column: &ColumnData, c
 /// seiner Zelle ab, also ist die sichtbare Oberfläche dann unabhängig vom Seed.
 #[test]
 fn surface_cells_unchanged_without_entrance() {
-    // Zusätzlich ein Block mit Steilhängen (dort fand das Review den Fehler der
-    // rein senkrechten Tiefe, z. B. Chunk 0,1,-40).
+    // Zusätzlich Blöcke mit den steilsten Hängen von Seed 42. Das Review fand den Fehler
+    // der rein senkrechten Tiefe an einem steilen Flussufer (Chunk 0,1,-40); seit #35 sind
+    // die Ufer flach, die steilsten Stellen liegen jetzt an Berghängen.
     let mut columns: Vec<(i32, i32)> = COLUMNS.to_vec();
-    for chunk_z in -42..=-38 {
-        for chunk_x in -3..=3 {
-            columns.push((chunk_x, chunk_z));
+    for (center_x, center_z) in [(70, -22), (148, -82), (-15, 27)] {
+        for chunk_z in center_z - 1..=center_z + 1 {
+            for chunk_x in center_x - 1..=center_x + 1 {
+                columns.push((chunk_x, chunk_z));
+            }
         }
     }
     let (mut cells, mut steep_cells) = (0usize, 0usize);
@@ -74,8 +77,9 @@ fn surface_cells_unchanged_without_entrance() {
                                 continue;
                             }
                             cells += 1;
-                            // Steiler Fall: eine Ecke liegt senkrecht tief, die Zelle berührt trotzdem Luft.
-                            if corners.iter().any(|&(cx, cy, cz)| column.height(cx, cz) - (origin.y + cy) as f32 > SURFACE_SHELL + 4.0) {
+                            // Steiler Fall: eine Ecke liegt senkrecht tiefer als die Schale, die Zelle
+                            // berührt trotzdem Luft. Nur nach senkrechter Tiefe würde hier gegraben.
+                            if corners.iter().any(|&(cx, cy, cz)| column.height(cx, cz) - (origin.y + cy) as f32 > SURFACE_SHELL) {
                                 steep_cells += 1;
                             }
                             for (cx, cy, cz) in corners {
@@ -97,6 +101,7 @@ fn surface_cells_unchanged_without_entrance() {
         }
     }
     assert!(cells > 50_000, "zu wenige Oberflächen-Zellen geprüft: {cells}");
+    eprintln!("Oberflächen-Zellen: {cells}, davon steil: {steep_cells}");
     assert!(steep_cells > 100, "Steilhänge nicht abgedeckt: {steep_cells}");
 }
 
