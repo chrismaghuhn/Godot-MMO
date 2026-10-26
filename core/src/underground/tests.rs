@@ -289,7 +289,7 @@ fn surface_materials_unchanged_even_at_entrances() {
     let sea = world.cfg.sea_level;
     // Große Eingänge aus einer Messung mit diesem Seed (siehe #4/#45).
     let spots = [(-1435.9, -1254.7), (-648.2, 979.9), (581.3, 1343.3), (-1585.2, 686.4), (33.9, -1042.3)];
-    let (mut cells, mut entrance_cells) = (0usize, 0usize);
+    let (mut cells, mut entrance_cells, mut opened_cells) = (0usize, 0usize, 0usize);
     for (x, z) in spots {
         let (chunk_x, chunk_z) = ((x / CHUNK_SIZE as f32).floor() as i32, (z / CHUNK_SIZE as f32).floor() as i32);
         for (dx, dz) in [(0, 0), (1, 0), (0, 1), (-1, 0), (0, -1)] {
@@ -315,6 +315,10 @@ fn surface_materials_unchanged_even_at_entrances() {
                             if at_entrance {
                                 entrance_cells += 1;
                             }
+                            // Echte Öffnung: Höhle hat hier öffentlichen Fels zu Luft gemacht.
+                            if corners.iter().any(|&(a, b, c)| full.get(a, b, c) <= 0.0 && public.get(a, b, c) > 0.0) {
+                                opened_cells += 1;
+                            }
                             for (a, b, c) in corners {
                                 if full.get(a, b, c) > 0.0 {
                                     assert_eq!(
@@ -332,4 +336,5 @@ fn surface_materials_unchanged_even_at_entrances() {
     }
     assert!(cells > 10_000, "zu wenige Oberflächen-Zellen: {cells}");
     assert!(entrance_cells > 100, "Eingänge nicht abgedeckt: {entrance_cells}");
+    assert!(opened_cells > 50, "keine echten Höhlenöffnungen im Testgebiet: {opened_cells}");
 }
