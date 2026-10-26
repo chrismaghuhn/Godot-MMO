@@ -309,7 +309,7 @@ fn settle(streamer: &mut Streamer<usize>, scene: &mut Scene, camera: Vec3) {
         streamer.update(camera);
         let events: Vec<_> = streamer.drain_events().collect();
         let stats = streamer.stats();
-        let idle = stats.column_jobs == 0 && stats.columns_ready == 0 && stats.cave_jobs == 0 && stats.far_jobs == 0;
+        let idle = stats.column_jobs == 0 && stats.columns_ready == 0 && stats.cave_jobs == 0 && stats.caves_ready == 0 && stats.far_jobs == 0 && stats.far_ready == 0;
         quiet = if events.is_empty() && idle { quiet + 1 } else { 0 };
         events.into_iter().for_each(|event| scene.apply(event));
         std::thread::sleep(Duration::from_millis(2));

@@ -247,6 +247,7 @@ dependencies = [
 name = "terraforge-gdext"
 version = "0.1.0"
 dependencies = [
+ "glam 0.33.12",
  "godot",
  "terraforge-core",
 ]

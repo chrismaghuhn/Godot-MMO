@@ -103,6 +103,10 @@ impl<M: Send + 'static> Far<M> {
         self.pending.len()
     }
 
+    pub(super) fn ready_count(&self) -> usize {
+        self.ready.len()
+    }
+
     /// Vergisst einen Job, der nicht fertig wird (Panic).
     pub(super) fn forget(&mut self, id: u64) {
         self.pending.retain(|_, (ticket, _)| ticket.id != id);

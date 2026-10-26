@@ -20,6 +20,8 @@ crate-type = ["cdylib", "rlib"]
 terraforge-core = { path = "../core" }
 # API genau auf die Godot-Version des Clients (4.7, `client/project.godot`) festgelegt.
 godot = { version = "0.5.5", features = ["api-4-7"] }
+# Gleiche Version wie im Core (Positionen der Streaming-Events).
+glam = "0.33"
 
 # Wie im Haupt-Workspace: eigener Code schnell gebaut, Abhängigkeiten optimiert.
 [profile.dev]

@@ -1,11 +1,15 @@
 //! terraforge-gdext: bindet `terraforge-core` in Godot ein (#10, D-021).
 //!
 //! Eine Datei pro Godot-Klasse:
-//! - `world`: `TerraforgeWorld`, die öffentliche Weltgenerierung (Höhe, Biom)
+//! - `world`:   `TerraforgeWorld`, die öffentliche Weltgenerierung (Höhe, Biom, Spawnpunkt)
+//! - `terrain`: `TerraforgeTerrain`, Chunk-Streaming um die Kamera (#11)
+//! - `mesh`:    Core-Meshes → Godot-Meshes (keine Godot-Klasse)
 //!
 //! Der geheime Untergrund ist nicht enthalten (D-005); Höhlen und Erze kommen später vom Server
 //! (#56). Build-Anleitung: `client/README.md`.
 
+mod mesh;
+mod terrain;
 mod world;
 
 use godot::prelude::*;

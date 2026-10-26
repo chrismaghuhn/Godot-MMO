@@ -2,7 +2,7 @@
 #
 #   godot --headless --path client --script res://tests/gdext_smoke.gd -- <seed> <x> <z>
 #
-# Gibt eine Zeile "TERRAFORGE height=<h> biome=<name> sea=<s>" aus. Exit-Code 1, wenn die
+# Gibt eine Zeile "TERRAFORGE height=<h> biome=<name> sea=<s> spawn=<x>,<y>,<z>" aus. Exit-Code 1, wenn die
 # Extension fehlt oder falsch antwortet, 2 bei ungültigen Argumenten.
 # `gdext/tests/godot_smoke.rs` vergleicht die Werte mit terraforge-core.
 extends SceneTree
@@ -34,5 +34,6 @@ func _init() -> void:
 		printerr("Seed -1 wurde angenommen")
 		quit(1)
 		return
-	print("TERRAFORGE height=%.6f biome=%s sea=%.6f" % [world.height_at(x, z), world.biome_at(x, z), world.sea_level()])
+	var spawn: Vector3 = world.spawn_point()
+	print("TERRAFORGE height=%.6f biome=%s sea=%.6f spawn=%.3f,%.3f,%.3f" % [world.height_at(x, z), world.biome_at(x, z), world.sea_level(), spawn.x, spawn.y, spawn.z])
 	quit(0)

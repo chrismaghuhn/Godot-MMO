@@ -48,6 +48,10 @@ impl<M: Send + 'static> Caves<M> {
         self.pending.len()
     }
 
+    pub(super) fn ready_count(&self) -> usize {
+        self.ready.len()
+    }
+
     pub(super) fn mesh_count(&self) -> usize {
         self.map.values().filter(|entry| entry.mesh).count()
     }

@@ -119,8 +119,12 @@ pub struct Stats {
     /// Fertige Spalten, die noch auf das Einfügen warten (Budget pro Frame).
     pub columns_ready: usize,
     pub cave_jobs: usize,
+    /// Fertige Höhlen-Chunks, die noch auf das Einfügen warten.
+    pub caves_ready: usize,
     pub cave_meshes: usize,
     pub far_jobs: usize,
+    /// Fertige Fernkacheln, die noch auf das Einfügen warten (eine pro Frame).
+    pub far_ready: usize,
     pub far_tiles: usize,
     pub cull: CullStats,
 }
@@ -287,8 +291,10 @@ impl<M: Send + 'static> Streamer<M> {
             column_jobs: self.columns.pending_count(),
             columns_ready: self.columns.ready_count(),
             cave_jobs: self.caves.pending_count(),
+            caves_ready: self.caves.ready_count(),
             cave_meshes: self.caves.mesh_count(),
             far_jobs: self.far.pending_count(),
+            far_ready: self.far.ready_count(),
             far_tiles: self.far.tile_count(),
             cull: self.cull,
         }

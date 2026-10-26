@@ -646,3 +646,25 @@ Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
   Client für alle Abhängigkeiten des Cores dieselben Versionen nutzt, sonst entstünden still
   verschiedene Welten (Review-Fund).
 - Bekannt: Der erste Import mit Extension stürzt beim Beenden ab (#57), danach läuft alles.
+
+**Umsetzung Chunks und Streaming in Godot (#11, 2026-10-26):**
+- `TerraforgeTerrain` (Node3D) nutzt den Core-Streamer mit `PublicSurface`. Dessen Worker wandeln
+  die Meshes schon in Godot-Daten um (`MeshData`, reine Rust-Daten ohne Godot-Objekte), der
+  Hauptthread baut daraus `ArrayMesh`-Nodes. Dreiecke werden umgedreht: Der Core liefert sie gegen
+  den Uhrzeigersinn, Godot erwartet Vorderseiten im Uhrzeigersinn. Ein `MeshInstance3D` pro Chunk
+  bzw. Fernkachel, eine `Node3D` pro Spalte.
+- Budget pro Frame wie im Viewer über die Grenzen des Streamers. Gemessen (30 s Autopilot,
+  180 m/s, Radius 8 mit Fernterrain): Upload Ø 0,4 ms, p95 1 ms pro Frame. Mit VSync p99
+  16,67 ms; ohne VSync Ø 0,93 ms, p99 1,39 ms pro Frame.
+- Frustum Culling macht Godot selbst: Blick zum Himmel 20 statt 333 Draw Calls.
+- Startszene in `client/scripts/main.gd`: Spawnpunkt wie im Viewer (`core/src/spawn.rs`,
+  verschoben aus dem Viewer), Tiefennebel bis vor die garantierte Fernsicht, Sonne, Wasser-Shader
+  (feines 2-m-Feld um die Kamera plus flacher Ring bis zum Horizont), F3-Overlay, Benchmark wie #9.
+- Tests in Godot (headless, mit temporärem Projekt): Streaming nah (genaue Spalten und
+  Chunk-Positionen, Entfernen beim Weiterfliegen), Fernterrain (184 Kacheln, ersetzt beim Flug über
+  ein Fernfeld), Hauptszene 300 Frames. Jeder Skriptfehler lässt die Tests fehlschlagen (Godot
+  beendet sich bei Laufzeitfehlern mit Exit 0, Review-Fund). Gegenproben: Fehlendes Entfernen von
+  Spalten oder Fernkacheln und ein Laufzeitfehler im Overlay werden erkannt.
+- Review-Funde behoben: Nebel war praktisch aus (`fog_density` ist im Tiefenmodus die
+  Höchststärke), der Terrain-Test lief wegen eines verdeckten Skriptfehlers am Ursprung,
+  Fernkacheln galten vor dem Einfügen als fertig (`Stats` hat jetzt `far_ready`/`caves_ready`).

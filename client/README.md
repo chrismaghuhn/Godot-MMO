@@ -38,14 +38,40 @@ dem zweiten Start läuft alles normal. Alternativ die Datei selbst anlegen:
 mkdir -p client/.godot && echo "res://terraforge.gdextension" > client/.godot/extension_list.cfg
 ```
 
+## Starten
+
+```bash
+cargo build --manifest-path gdext/Cargo.toml
+godot --path client
+```
+
+Die Startszene ([`scenes/main.tscn`](scenes/main.tscn), aufgebaut in
+[`scripts/main.gd`](scripts/main.gd)) streamt das Terrain um die Kamera (`TerraforgeTerrain`,
+#11), mit Fernterrain bis ~3,5 km, Nebel, Sonne und Wasser
+([`shaders/water.gdshader`](shaders/water.gdshader)). Start am selben Spawnpunkt wie im Viewer.
+Bäume folgen mit #12, Höhlen mit dem Server (#56).
+
+- **Steuerung:** WASD + Q/E fliegen, Shift schnell, rechte Maustaste halten zum Umsehen,
+  F3 Overlay (Frametimes, Streaming, gezeichnete Objekte, Position, Biom).
+- **Umgebungsvariablen** (wie im Viewer): `TERRAFORGE_SEED`, `TERRAFORGE_VIEW_RADIUS`,
+  `TERRAFORGE_FAR=0` (ohne Fernterrain), `TERRAFORGE_CAM_Y`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW`
+  (Grad), `TERRAFORGE_AUTOPILOT` (m/s nach +x), `TERRAFORGE_SHOT=pfad.png` mit
+  `TERRAFORGE_SHOT_AFTER` (Frames) für einen Screenshot.
+- **Benchmark** (wie #9 im Viewer, Fenster sichtbar lassen):
+
+  ```bash
+  TERRAFORGE_BENCH=30 TERRAFORGE_AUTOPILOT=180 godot --path client --resolution 1600x900
+  ```
+
 ## Tests
 
 ```bash
 GODOT=/pfad/zu/godot cargo test --manifest-path gdext/Cargo.toml
 ```
 
-startet Godot headless mit [`tests/gdext_smoke.gd`](tests/gdext_smoke.gd) und vergleicht Höhe und
-Biom mit `terraforge-core`. Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
+startet Godot headless mit [`tests/gdext_smoke.gd`](tests/gdext_smoke.gd) (Höhe und Biom im Vergleich
+mit `terraforge-core`) und [`tests/terrain_smoke.gd`](tests/terrain_smoke.gd) (Streaming: Spalten,
+Meshes, Entfernen beim Weiterfliegen). Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
 gebaute Bibliothek lädt; die des Editors bleibt unberührt. Ohne Godot (`GODOT` oder `godot` im
 `PATH`) schlägt er fehl. Außerdem prüft `gdext/tests/lockfiles.rs`, dass `gdext/Cargo.lock` für
 alle Abhängigkeiten des Cores dieselben Versionen hat wie das Haupt-`Cargo.lock` (sonst erzeugten
