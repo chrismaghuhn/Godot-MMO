@@ -12,7 +12,7 @@ use terraforge_core::{
 
 use crate::controls::{AutoPilot, WalkMode, WalkState};
 use crate::meshes::tree_geo_to_mesh;
-use crate::streaming::{CHUNK_SIZE, ChunkAssets};
+use crate::streaming::{CHUNK_SIZE, ChunkAssets, FAR_GUARANTEED, FAR_VIEW};
 use crate::{WorldRes, env_parse};
 
 #[derive(Resource)]
@@ -51,7 +51,11 @@ pub fn setup_scene(
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(0.0);
-    let fog_end = world.0.cfg.view_radius as f32 * CHUNK_SIZE - 20.0;
+    // Mit Fernterrain (#33) reicht die Sicht bis ~3,5 km, sonst bis zum Rand der Nahzone.
+    let far = env_parse::<u32>("TERRAFORGE_FAR").unwrap_or(1) != 0;
+    // Nebel endet vor der garantierten Reichweite (Kamera am Feldrand), sonst sieht man die Kante.
+    let fog_end = if far { FAR_GUARANTEED * 0.95 } else { world.0.cfg.view_radius as f32 * CHUNK_SIZE - 20.0 };
+    let fog_start = if far { fog_end * 0.30 } else { fog_end * 0.55 };
     let camera_position = spawn + Vec3::new(0.0, 4.5 + camera_lift, 0.0);
     commands.insert_resource(WalkState(camera_position));
     let look_target = spawn_look(&world.0, spawn);
@@ -66,6 +70,10 @@ pub fn setup_scene(
 
     let mut camera = commands.spawn((
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            far: FAR_VIEW * 2.0,
+            ..default()
+        }),
         camera_transform,
         FreeCamera {
             walk_speed: 32.0,
@@ -86,7 +94,7 @@ pub fn setup_scene(
         camera.insert(DistanceFog {
             color: Color::srgb(0.62, 0.74, 0.86),
             falloff: FogFalloff::Linear {
-                start: fog_end * 0.55,
+                start: fog_start,
                 end: fog_end,
             },
             ..default()
@@ -108,7 +116,8 @@ pub fn setup_scene(
         ..default()
     });
 
-    let water_mesh = meshes.add(Plane3d::default().mesh().size(8000.0, 8000.0));
+    let water_size = FAR_VIEW * 3.0;
+    let water_mesh = meshes.add(Plane3d::default().mesh().size(water_size, water_size));
     let water_material = materials.add(StandardMaterial {
         base_color: Color::srgba(0.10, 0.33, 0.45, 0.72),
         alpha_mode: AlphaMode::Blend,
@@ -117,6 +126,7 @@ pub fn setup_scene(
         ..default()
     });
     commands.spawn((
+        Water,
         Mesh3d(water_mesh),
         MeshMaterial3d(water_material),
         Transform::from_xyz(0.0, sea, 0.0),
@@ -192,4 +202,20 @@ fn spawn_look(world: &WorldGen, spawn: Vec3) -> Vec3 {
     let x = spawn.x + best_angle.cos() * 70.0;
     let z = spawn.z + best_angle.sin() * 70.0;
     Vec3::new(x, best_height.max(spawn.y) + 6.0, z)
+}
+
+/// Wasserfläche auf Meereshöhe; folgt der Kamera, damit sie bis zum Horizont reicht.
+#[derive(Component)]
+pub struct Water;
+
+pub fn water_follows_camera(
+    camera: Query<&Transform, (With<Camera3d>, Without<Water>)>,
+    mut water: Query<&mut Transform, With<Water>>,
+) {
+    let (Ok(camera), Ok(mut water)) = (camera.single(), water.single_mut()) else {
+        return;
+    };
+    // Auf 64 m runden, damit die Fläche nicht mit jedem Schritt "mitzittert".
+    water.translation.x = (camera.translation.x / 64.0).round() * 64.0;
+    water.translation.z = (camera.translation.z / 64.0).round() * 64.0;
 }

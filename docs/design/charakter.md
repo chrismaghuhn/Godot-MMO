@@ -1,6 +1,6 @@
 # Design: Charakter, Bewegung und Kampf
 
-Status: Entwurf (2026-10-26). Entscheidungen dazu: [D-016](../../DECISIONS.md#d-016-charakter-prozedural-first-person-mit-echtem-körper).
+Status: Entwurf (2026-10-26). Entscheidungen dazu: [D-020](../../DECISIONS.md#d-020-charakter-prozedural-first-person-mit-echtem-körper).
 
 Gehört zu Phase 5 (Prozedurale Charaktere, #24). Kampf und Netzwerk betreffen auch Phase 6.
 

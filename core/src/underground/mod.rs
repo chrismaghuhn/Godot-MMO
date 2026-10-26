@@ -11,6 +11,7 @@
 //! - `provinces`: geologische Provinzen mit ihren Erzarten (#45)
 //! - `ore_rules`: Regeln je Erz (Form, Wirtsgestein, Tiefe)
 //! - `ores`:      Platzierung der Erze (#45)
+//! - `visibility`: Erze für Clients verbergen, bis sie freiliegen (#46)
 //!
 //! Regel: Der öffentliche Teil (`world`, `volume`, …) importiert nie etwas aus diesem Modul.
 //! Der Compiler erzwingt das, weil der öffentliche Teil auch ohne das Feature bauen muss.
@@ -21,11 +22,13 @@ mod ore_rules;
 mod ores;
 mod provinces;
 mod seed;
+mod visibility;
 
 pub use caves::{CAVE_MIN_Y, SURFACE_SHELL};
 pub use ore_rules::{Form, OreKind, OreRule};
 pub use provinces::{Deposit, MAX_ORES, PROVINCE_SIZE, Province, ProvinceId};
 pub use seed::SecretSeed;
+pub use visibility::hide_unexposed_ores;
 
 use caves::{CaveGrid, CaveNoise, ShellHeights};
 use ores::OreNoise;
@@ -120,7 +123,7 @@ impl Underground {
 
     /// Öffentliches Feld → Höhlen → Erze. Gibt zurück, ob Höhlen Luft geschaffen haben.
     fn build(&self, world: &WorldGen, column: &ColumnData, chunk_y: i32, grid: &CaveGrid) -> (DensityChunk, bool) {
-        let shell = ShellHeights::new(world, column);
+        let shell = ShellHeights::cached(world, column);
         let mut chunk = DensityChunk::from_column(column, chunk_y);
         let carved_air = caves::carve(&self.caves, grid, column, &shell, &mut chunk, self.sea_level);
         ores::apply_ores(&self.ores, &self.provinces, world, column, &shell, &mut chunk);

@@ -383,3 +383,156 @@ fn shell_protects_a_synthetic_pit_against_caves_everywhere() {
     }
     assert!(checked > 500, "zu wenige Oberflächen-Zellen: {checked}");
 }
+
+/// #7: Mit Höhlen (inkl. Eingängen) steht kein Baum in der Luft, unter einer Höhlendecke oder
+/// über einem Loch. Geprüft als Eigenschaft an der echten Wurzelposition (trilinear): fest
+/// 0,5 m unter der Wurzel, frei 1-3 m darüber. Außerdem müssen Höhlen tatsächlich Bäume
+/// entfernen, die mit nur öffentlichen Daten stehen würden.
+#[test]
+fn settled_trees_stand_on_the_volume_surface() {
+    use crate::vegetation::{plan_trees, settle_tree};
+    use std::collections::HashMap;
+    let world = WorldGen::new(42);
+    let underground = Underground::new(SecretSeed::insecure_dev_seed(42), &world.cfg);
+    let (mut planned, mut kept, mut removed_by_caves) = (0, 0, 0);
+    let mut columns = Vec::new();
+    for (x, z) in [(-363.9f32, -1728.4f32), (30.8, -1039.5), (1991.9, 1877.1), (0.0, 0.0), (700.0, -300.0)] {
+        let (cx, cz) = ((x / CHUNK_SIZE as f32).floor() as i32, (z / CHUNK_SIZE as f32).floor() as i32);
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                columns.push((cx + dx, cz + dz));
+            }
+        }
+    }
+    for (chunk_x, chunk_z) in columns {
+        let column = ColumnData::sample(&world, chunk_x, chunk_z);
+        let mut secret: HashMap<i32, DensityChunk> = HashMap::new();
+        let mut public: HashMap<i32, DensityChunk> = HashMap::new();
+        let lookup = |cache: &mut HashMap<i32, DensityChunk>, with_caves: bool, v: glam::IVec3| {
+            let chunk_y = v.y.div_euclid(CHUNK_SIZE);
+            let chunk = cache.entry(chunk_y).or_insert_with(|| {
+                if with_caves { underground.materials_chunk(&world, &column, chunk_y) } else { DensityChunk::from_column(&column, chunk_y) }
+            });
+            let origin = chunk.origin();
+            chunk.get(v.x - origin.x, v.y - origin.y, v.z - origin.z)
+        };
+        let trees = plan_trees(world.cfg.seed, world.cfg.sea_level, chunk_x, chunk_z, column.heights(), &column.biomes, &column.temperatures);
+        for tree in trees {
+            planned += 1;
+            let root = glam::Vec3::new(
+                (chunk_x * CHUNK_SIZE) as f32 + tree.position.x,
+                tree.position.y,
+                (chunk_z * CHUNK_SIZE) as f32 + tree.position.z,
+            );
+            let plan = |x: i32, z: i32| world.column_height(x as f32, z as f32);
+            let with_caves = settle_tree(root, plan, |v| lookup(&mut secret, true, v));
+            let without = settle_tree(root, plan, |v| lookup(&mut public, false, v));
+            assert!(without.is_some(), "Baum ohne Höhlen entfernt bei {root}");
+            let Some(y) = with_caves else {
+                removed_by_caves += 1;
+                continue;
+            };
+            kept += 1;
+            // Trilinear an der echten Position.
+            let mut sample = |p: glam::Vec3| {
+                let base = p.floor().as_ivec3();
+                let t = p - base.as_vec3();
+                let mut sum = 0.0;
+                for dz in 0..2 {
+                    for dy in 0..2 {
+                        for dx in 0..2 {
+                            let w = (if dx == 1 { t.x } else { 1.0 - t.x })
+                                * (if dy == 1 { t.y } else { 1.0 - t.y })
+                                * (if dz == 1 { t.z } else { 1.0 - t.z });
+                            sum += w * lookup(&mut secret, true, base + glam::IVec3::new(dx, dy, dz));
+                        }
+                    }
+                }
+                sum
+            };
+            let at = glam::Vec3::new(root.x, y + 0.25, root.z);
+            assert!(sample(at - glam::Vec3::Y * 0.5) > 0.0, "kein Boden unter dem Baum bei {at}");
+            for h in [1.0, 2.0, 3.0] {
+                assert!(sample(at + glam::Vec3::Y * h) <= 0.0, "Decke über dem Baum bei {at}");
+            }
+        }
+    }
+    eprintln!("Bäume: {kept} von {planned} gesetzt, {removed_by_caves} wegen Höhlen entfernt");
+    assert!(planned > 100);
+    assert!(removed_by_caves > 0, "Testgebiet deckt keinen Höhleneingang unter Bäumen ab");
+    assert!(kept * 100 >= planned * 90, "zu viele Bäume entfernt: {kept}/{planned}");
+}
+
+/// #41: Kaum winzige, abgetrennte Hohlräume. Vorher zerfielen Tunnel in Perlenketten: 89 % der
+/// vollständig erfassten Hohlräume waren < 64 m³ (10,7 % des Volumens).
+#[test]
+fn caves_have_few_tiny_fragments() {
+    use std::collections::VecDeque;
+    let world = WorldGen::new(42);
+    let (mut small_volume, mut total_volume) = (0usize, 0usize);
+    for secret in [1u64, 2] {
+        let underground = Underground::new(SecretSeed::from_u64(secret), &world.cfg);
+        for (bx, bz) in [(0, 0), (40, -20), (-30, 25), (15, 60)] {
+            let (nx, ny, nz) = (4usize, 3usize, 4usize);
+            let (sx, sy, sz) = (nx * 32, ny * 32, nz * 32);
+            let mut air = vec![false; sx * sy * sz];
+            for cz in 0..nz {
+                for cx in 0..nx {
+                    let column = ColumnData::sample(&world, bx + cx as i32, bz + cz as i32);
+                    for cy in 0..ny {
+                        let chunk = underground.materials_chunk(&world, &column, -4 + cy as i32);
+                        for z in 0..32 {
+                            for y in 0..32 {
+                                for x in 0..32 {
+                                    let world_y = (-4 + cy as i32) * 32 + y;
+                                    if chunk.get(x, y, z) <= 0.0 && (world_y as f32) < column.height(x, z) - 6.0 {
+                                        air[((cz * 32 + z as usize) * sy + cy * 32 + y as usize) * sx + cx * 32 + x as usize] = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let mut seen = vec![false; air.len()];
+            for start in 0..air.len() {
+                if !air[start] || seen[start] {
+                    continue;
+                }
+                let mut queue = VecDeque::from([start]);
+                seen[start] = true;
+                let (mut volume, mut cut) = (0usize, false);
+                while let Some(i) = queue.pop_front() {
+                    volume += 1;
+                    let (x, y, z) = (i % sx, (i / sx) % sy, i / (sx * sy));
+                    cut |= x == 0 || y == 0 || z == 0 || x + 1 == sx || y + 1 == sy || z + 1 == sz;
+                    let neighbours = [
+                        (x > 0).then(|| i - 1),
+                        (x + 1 < sx).then(|| i + 1),
+                        (y > 0).then(|| i - sx),
+                        (y + 1 < sy).then(|| i + sx),
+                        (z > 0).then(|| i - sx * sy),
+                        (z + 1 < sz).then(|| i + sx * sy),
+                    ];
+                    for j in neighbours.into_iter().flatten() {
+                        if air[j] && !seen[j] {
+                            seen[j] = true;
+                            queue.push_back(j);
+                        }
+                    }
+                }
+                if cut {
+                    continue; // am Blockrand abgeschnitten
+                }
+                total_volume += volume;
+                if volume < 64 {
+                    small_volume += volume;
+                }
+            }
+        }
+    }
+    let share = small_volume as f64 / total_volume.max(1) as f64;
+    eprintln!("Fetzen-Anteil am Hohlraum: {:.2} %", share * 100.0);
+    assert!(total_volume > 2000, "zu wenig Hohlraum im Testgebiet: {total_volume}");
+    assert!(share < 0.03, "Fetzen-Anteil {share:.3}");
+}

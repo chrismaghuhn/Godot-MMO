@@ -39,18 +39,20 @@ Grundlage für Höhlen und freies Graben (D-004). Entwicklung und Test im Bevy-V
 - [x] Mesh-Erzeugung mit Surface Nets: #2
 - [x] Trennung öffentliche/geheime Generierung (Oberfläche vs. Untergrund, D-005): #3
 - [x] Höhlen: Kavernen + Tunnel + Eingänge an der Oberfläche: #4
-  - [ ] Kleine Höhlenfetzen: #41
-  - [ ] ShellHeights pro Spalte cachen: #42
-- [ ] Gestein und Erze (D-013): #5
+  - [x] Kleine Höhlenfetzen: #41
+  - [x] ShellHeights pro Spalte cachen: #42
+- [x] Gestein und Erze (D-013): #5
   - [x] Material-Kanal pro Voxel + materials.ron: #43
   - [x] Gesteinsschichten und Oberflächenmaterial (öffentlich): #44
   - [x] Provinzen, Erz-Vorkommen, Reinheit (geheim): #45
-  - [ ] Sichtbarkeits-Filter (Erze erst zeigen, wenn sie freiliegen): #46
-  - [ ] Viewer: Materialfarben, Röntgenmodus, Statistik: #47
-- [ ] Graben/Bauen: Änderungen pro Chunk speichern, Chunk neu vermaschen: #6
-- [ ] Bäume auf die Volumen-Oberfläche setzen: #7
-- [ ] Cave Culling (Sichtbarkeit über Chunk-Verbindungen, D-006): #8
-- [ ] Performance-Messung als festes Werkzeug (Frametimes, Chunk-Zeiten): #9
+  - [x] Sichtbarkeits-Filter (Erze erst zeigen, wenn sie freiliegen, D-018): #46
+  - [x] Viewer: Materialfarben, Röntgenmodus, Statistik: #47
+- [x] Graben/Bauen: Änderungen pro Voxel, Chunk neu vermaschen (D-016): #6
+- [x] Bäume auf die Volumen-Oberfläche setzen, stabile IDs, Fällen vorbereitet (D-017): #7
+- [x] Cave Culling (Sichtbarkeit über Chunk-Verbindungen, D-006, D-018): #8
+- [x] Performance-Messung als festes Werkzeug (Frametimes, Chunk-Zeiten): #9
+
+Phase 1 abgeschlossen am 2026-10-26.
 
 ## Phase 2: Godot-Client
 
@@ -79,7 +81,7 @@ Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 - [ ] Crafting-UI: #22
 - [ ] Prozedurale Item-Optik abhängig vom Material: #23
 - [ ] Schmiede-Simulation als Prototyp in `core/` (Aktions-Enum, Hammerschlag, Wärme, Remeshing,
-  Abschrecken, Golden-File-Test), Design in [docs/design/schmieden-datenmodell.md](docs/design/schmieden-datenmodell.md) (D-015)
+  Abschrecken, Golden-File-Test), Design in [docs/design/schmieden-datenmodell.md](docs/design/schmieden-datenmodell.md) (D-019)
 
 **Entscheidungspunkt:** Macht der Kreislauf Sammeln → Craften → Verbessern allein Spaß?
 Wenn nicht: hier nachbessern, bevor Netzwerk dazukommt.
@@ -114,15 +116,15 @@ Wenn nicht: hier nachbessern, bevor Netzwerk dazukommt.
 - Besondere Welt-Features: schwebende Inseln, Wasserfälle, Ruinen, Geysire, Treibsand: #30
 - Seen als eigene Gewässer: #31
 - Höhlen-Biome auf echte Höhlen abbilden: #32
-- LOD für weite Sichtweite: #33
+- [x] LOD für weite Sichtweite (D-015): #33
 
 ## Bekannte Bugs und Aufräumarbeiten
 
 Aktueller Stand immer in den [offenen Issues](https://github.com/chrismaghuhn/Godot-MMO/issues?q=is%3Aopen+label%3Abug%2Ctech-debt).
 
-- Gebirgsränder blockartig: #36
-- 8 doppelte Biom-Namen: #37
-- Viewer ruckelt, wenn gleichzeitig Godot offen ist: #38
+- [x] Gebirgsränder blockartig: #36
+- [x] 8 doppelte Biom-Namen: #37
+- [x] Viewer ruckelt, wenn gleichzeitig Godot offen ist (nicht mehr reproduzierbar): #38
 
 ---
 

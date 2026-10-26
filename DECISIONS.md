@@ -357,7 +357,110 @@ Land: < 5° ~16 % → ~33 %, steiler als 30° ~28 % → ~15 % (ergänzt D-007).
 **Folgen:** Die ganze Welt hat sich verschoben (Spawn, Karten, Biom-Verteilung). Das Gefühl
 großer Regionen braucht weite Sicht; dafür wird LOD (#33) wichtiger.
 
-## D-015: Schmieden als Simulation statt Rezept
+## D-015: Fernterrain (LOD) und weichere Gebirgsränder
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Seit D-014 sind Regionen 4-8 km groß, die Sicht endete aber nach ~250 m im Nebel (#33).
+Außerdem stiegen Gebirge blockartig aus der Ebene auf (#36).
+
+**Entscheidung (#33):**
+- Fernterrain aus der öffentlichen Höhenkarte (`core/src/lod.rs`), Höhlen spielen in der Ferne keine
+  Rolle. Zwei Stufen: 256-m-Kacheln mit 4-m-Raster bis ~1,5 km, 1024-m-Kacheln mit 16-m-Raster bis
+  ~3,5 km. Schürzen an Kanten verdecken Risse zwischen den Auflösungen.
+- Nahzone wird ausgespart, aber nur über vollständig geladenen Spalten; sonst liegt das Fernterrain
+  leicht tiefer unter der Nahzone. So sieht man nie durch den Boden (Start, Teleport, schneller Flug).
+  Aussparung mit Hysterese, Austausch von Kacheln erst, wenn der Ersatz fertig ist.
+- Sichtradius der Nahzone höchstens 30 Chunks; Nebel endet vor der garantierten Reichweite (3072 m).
+- Fernterrain hat noch keine Bäume (Folge-Issue).
+
+**Entscheidung (#36):** Kamm-Maske setzt früher und weicher ein, dazu 30 m Vorgebirge, das Küste und
+Schelf nicht anhebt.
+
+**Zielkonflikt:** Weiche Ränder entstehen vor allem durch angehobenes Umland. Landanteil bleibt gleich
+(Seed 42: 62,4 % → 62,9 %), aber mehr Land liegt über der Flussgrenze: Flussfläche ≈ -20 %,
+Land über Meer + 55 m 25 % → 38 %, Biom "Berge" 13,5 % → 19 %, flaches Land 28 % → 24 %
+(ergänzt D-007/D-014). Flüsse bis Meer + 75 m wurden getestet, machten die Täler aber wieder steil.
+
+## D-016: Graben und Bauen über Änderungen pro Voxel
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Spieler sollen frei graben und bauen (D-004, #6). Später kommen Werkzeuge mit
+Härte-Stufen (#21), Ausbeute fürs Inventar (#18), Speicherung (#19) und der Server (#25/#26).
+
+**Entscheidung:**
+- `core/src/edits.rs`: Änderungen werden pro **Welt-Voxel** gespeichert (Dichte + Material) und beim
+  Bauen eines Chunks auf alle Chunks angewendet, die den Voxel als Sample enthalten. So bleiben
+  Nähte nach Änderungen bitgenau.
+- Graben/Bauen als Kugel-Distanzfeld (`min`/`max`), glatte Formen. Graben hat eine Härte-Grenze
+  (Werkzeug) und liefert die Ausbeute pro Material (Voxel, die von fest zu Luft wurden ≈ m³).
+- Der Generator wird über eine Funktion (`source`) angebunden, das Modul ist öffentlich.
+- Viewer: Werkzeug-Stufen Schaufel 2,5 / Feuerstein 4,0 / Bronze 5,5 / Eisen 7,0 (Härte), Neubau
+  betroffener Chunks im Hintergrund, altes Mesh bleibt bis zum Ersatz.
+
+**Folgen und Hinweise:**
+- **Server (D-005):** Änderungen allein reichen einem Client mit nur öffentlichen Daten nicht
+  (Voxel in Höhlenluft oder zu hartem Gestein werden nicht gespeichert). Der Server muss für
+  geänderte Chunks die fertigen Voxeldaten senden.
+- Speicherung fehlt noch (#19), Bäume über Löchern schweben noch (#7).
+- Review-Funde: verlorene Neubauten bei belegten Job-Plätzen, lange Locks beim Graben, Invariante
+  im Speicher – behoben.
+
+## D-017: Bäume auf der Volumen-Oberfläche, gefällte Bäume, Regel für Clients
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Bäume wurden auf der Höhenkarte geplant und schwebten über Höhleneingängen und
+gegrabenen Löchern (#7). Bäume sollen später gefällt werden (Axt, #21) und das gespeichert werden.
+
+**Entscheidung:**
+- Jeder Baum hat eine stabile ID (Spalten-Chunk + Zelle).
+- `settle_tree` setzt den geplanten Baum auf die tatsächliche Oberfläche (an den vier Ecken der Zelle
+  gesucht und interpoliert). Fehlt Boden, ist er zugeschüttet oder liegt etwas Festes darüber, entfällt
+  der Baum.
+- Gefällte Bäume sind Teil der Weltänderungen (`WorldEdits::fell_tree`).
+- **Regel für Clients (D-005):** Baum-Menge = `settle(öffentlicher Plan, Dichte, die der Client für
+  den Chunk hat)`. Der Server ist nur für die gefällten Bäume maßgeblich. Fernterrain-Bäume (#54)
+  nutzen den ungefilterten öffentlichen Plan und werden ersetzt, sobald der Chunk ankommt. Es dürfen
+  keine Informationen über entfernte Bäume über den Radius hinaus gesendet werden, in dem Chunks
+  ohnehin aufgedeckt sind – sonst verraten sie Höhleneingänge.
+
+- Jede Ecke der Baum-Zelle wird mit ihrer eigenen geplanten Höhe verglichen (± 1,5 m).
+
+**Folgen:** Mit Höhlen entfallen ≈ 0,1 % der Bäume (an großen Eingängen ≈ 3 %), ohne Höhlen und
+Spieler-Änderungen keiner (geprüft über 33.119 Bäume; erste Fassung verglich mit der Wurzelhöhe und
+entfernte an Hängen 0,04 %).
+
+## D-018: Cave Culling über Seiten-Verbindungen, Erz-Filter mit 26 Nachbarn
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Unter der Oberfläche wurden alle geladenen Höhlen-Chunks gezeichnet, auch völlig
+abgeschlossene (#8, D-006). Außerdem musste der Server-Filter für Erze (#46, D-005/D-013) genau
+festlegen, wann ein Erz "freiliegt".
+
+**Entscheidung:**
+- **Cave Culling:** Jeder Chunk speichert, welche seiner 6 Seiten durch Luft miteinander verbunden
+  sind (`occlusion::face_links`, Samples `0..=32`, also inklusive der mit dem Nachbarn geteilten
+  Lage). Eine Breitensuche von der Kamera aus geht nur durch verbundene Seiten und darf eine
+  eingeschlagene Richtung nicht umkehren (wie Minecraft). Nur erreichte Höhlen-Chunks werden gezeichnet.
+  Reine Luft und fehlende Daten gelten als offen (lieber zu viel zeichnen als Löcher), massive Chunks
+  ohne Daten als geschlossen. Chunks jenseits der Suchgrenze (Höhlenradius + 2) bleiben sichtbar.
+  Im Röntgenmodus und mit `TERRAFORGE_CULL=0` wird nicht gecullt.
+- **Erz-Filter:** Ein Erz-Voxel liegt frei, wenn einer seiner **26** Nachbarn Luft ist. Das ist genau
+  die Menge, die Surface Nets einfärben kann. Geprüft wird, dass Geometrie und Vertex-Materialien
+  von vollem und gefiltertem Chunk identisch sind.
+
+**Folgen:**
+- Oberfläche: ≈ 11 von 129 Höhlen-Chunks sichtbar, in einer Höhle ≈ 35 von 175 (bzw. 91 von 269);
+  Screenshots mit und ohne Culling sind pixelgleich.
+- Clients erhalten ≈ 3,8 % der Erz-Voxel, alle höchstens √3 m von Luft entfernt, die sie ohnehin
+  sehen. Das liegt im Rahmen von D-005.
+- Review-Funde (weggecullte Wände an Nachbar-Höhlen, unsichtbare tiefe Schächte, fehlende
+  Erzflächen durch 6er-Nachbarschaft, wachsende Job-Messwerte, veraltete Röntgen-Marker) – behoben.
+
+## D-019: Schmieden als Simulation statt Rezept
 - Datum: 2026-10-26
 - Status: angenommen
 
@@ -417,12 +520,12 @@ Alternativen: feste Segmentlänge (widerspricht dem Strecken), ein Gefügewert p
 (Lehm-Härten nur kosmetisch), f32 mit Bitgleichheit auf allen Clients (dauerhafte Fehlerquelle,
 bei server-autoritativem Modell unnötig).
 
-## D-016: Charakter prozedural, First-Person mit echtem Körper
+## D-020: Charakter prozedural, First-Person mit echtem Körper
 - Datum: 2026-10-26
 - Status: angenommen
 
 **Kontext:** Für Phase 5 (#24) muss feststehen, wie ein Spieler aussieht, wie er sich bewegt und
-kämpft. Wie beim Schmieden (D-015) sollen so wenig Assets wie möglich entstehen. Details in
+kämpft. Wie beim Schmieden (D-019) sollen so wenig Assets wie möglich entstehen. Details in
 [docs/design/charakter.md](docs/design/charakter.md) und [docs/design/kampf.md](docs/design/kampf.md).
 
 **Entscheidung:**

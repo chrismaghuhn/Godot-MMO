@@ -1,6 +1,6 @@
 # Design: Schmieden
 
-Status: Entwurf (2026-10-26). Entscheidungen dazu: [D-015](../../DECISIONS.md#d-015-schmieden-als-simulation-statt-rezept).
+Status: Entwurf (2026-10-26). Entscheidungen dazu: [D-019](../../DECISIONS.md#d-019-schmieden-als-simulation-statt-rezept).
 
 Ziel: Schmieden ist ein **tiefer** Skill statt eines flachen Rezept-Systems. Jedes Schwert ist
 einzigartig und sieht so aus, wie es geschmiedet wurde. Gehört zu Phase 4 (Crafting, #20, #23).

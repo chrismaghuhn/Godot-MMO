@@ -6,20 +6,27 @@
 //! - `meshes`:    Core-Meshes → Bevy-Meshes
 //! - `controls`:  Laufmodus und Autopilot
 //! - `overlay`:   F3-Overlay
+//! - `bench`:     Benchmark-Modus (`TERRAFORGE_BENCH=sekunden`, #9)
 //! - `devtools`:  Framelimiter, Auto-Screenshot
+//! - `dig`:       Graben und Bauen (Linksklick, `B`, Werkzeug mit `T`)
+//! - `xray`:      Röntgenmodus für Erze (`R`, #47)
 //!
 //! Umgebungsvariablen: `TERRAFORGE_VIEW_RADIUS`, `TERRAFORGE_WIN_W/H`, `TERRAFORGE_PRESENT`,
 //! `TERRAFORGE_SPAWN_X/Z`, `TERRAFORGE_CAM_Y`, `TERRAFORGE_WALK`, `TERRAFORGE_AUTOPILOT`,
 //! `TERRAFORGE_NO_FOG`, `TERRAFORGE_FPS_CAP`, `TERRAFORGE_SHOT`, `TERRAFORGE_SHOT_AFTER`,
 //! `TERRAFORGE_SECRET_SEED` (geheimer Untergrund-Seed; ohne: unsicherer Entwickler-Seed),
-//! `TERRAFORGE_CAVE_RADIUS`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW` (Grad), `TERRAFORGE_HEADLAMP`.
+//! `TERRAFORGE_CAVE_RADIUS`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW` (Grad), `TERRAFORGE_HEADLAMP`,
+//! `TERRAFORGE_FAR` (0 = ohne Fernterrain), `TERRAFORGE_AUTODIG` (n-mal graben beim Start), `TERRAFORGE_BENCH`/`TERRAFORGE_BENCH_OUT`, `TERRAFORGE_XRAY` (Röntgenmodus beim Start), `TERRAFORGE_CULL` (0 = ohne Cave Culling).
 
+mod bench;
 mod controls;
 mod devtools;
+mod dig;
 mod meshes;
 mod overlay;
 mod scene;
 mod streaming;
+mod xray;
 
 use std::sync::Arc;
 
@@ -30,12 +37,17 @@ use bevy::{
 };
 use terraforge_core::{
     WorldGen,
+    edits::WorldEdits,
     underground::{SecretSeed, Underground},
 };
 
 /// Die öffentliche Weltgenerierung, geteilt mit den Hintergrund-Jobs.
 #[derive(Resource)]
 pub struct WorldRes(pub Arc<WorldGen>);
+
+/// Spieler-Änderungen (#6), geteilt mit den Hintergrund-Jobs.
+#[derive(Resource, Default)]
+pub struct EditsRes(pub Arc<std::sync::RwLock<WorldEdits>>);
 
 /// Der geheime Untergrund (D-005). Im Spiel-Client gibt es das nicht, dort kommt der
 /// Untergrund vom Server; der Viewer erzeugt ihn als Debug-Tool selbst.
@@ -49,8 +61,9 @@ fn main() {
         .unwrap_or(42);
 
     let mut world = WorldGen::new(seed);
-    if let Some(radius) = env_parse("TERRAFORGE_VIEW_RADIUS") {
-        world.cfg.view_radius = radius;
+    if let Some(radius) = env_parse::<i32>("TERRAFORGE_VIEW_RADIUS") {
+        // Obergrenze: Darüber ragt die Nahzone aus der feinen Fernstufe heraus (#33).
+        world.cfg.view_radius = radius.clamp(1, streaming::MAX_VIEW_RADIUS);
     }
     let (secret_seed, dev_seed) = secret_seed_from_env(seed);
     let underground = Underground::new(secret_seed, &world.cfg);
@@ -61,6 +74,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.58, 0.72, 0.86)))
         .insert_resource(WorldRes(Arc::new(world)))
         .insert_resource(UndergroundRes(Arc::new(underground)))
+        .init_resource::<EditsRes>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: format!("terraforge | Seed {seed}"),
@@ -76,8 +90,12 @@ fn main() {
             controls::ControlsPlugin,
             overlay::OverlayPlugin,
             devtools::DevToolsPlugin,
+            dig::DigPlugin,
+            bench::BenchPlugin,
+            xray::XrayPlugin,
         ))
         .add_systems(Startup, scene::setup_scene)
+        .add_systems(Update, scene::water_follows_camera)
         .add_systems(Startup, move || {
             // Hier statt in main(): vor App::run ist Bevys Logging noch nicht aktiv.
             if dev_seed {

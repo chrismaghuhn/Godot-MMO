@@ -10,14 +10,15 @@ use bevy::{
 };
 use terraforge_core::{
     mesh::ChunkMesh,
-    vegetation::{TreePlacement, TreeStyle, plan_trees},
-    volume::ColumnData,
+    occlusion::{FaceLinks, face_links},
+    vegetation::{TreePlacement, TreeStyle, plan_trees, settle_tree},
+    volume::{self, ChunkKind, ColumnData, DensityChunk},
 };
 
-use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, TerrainChunk, Tree, camera_chunk};
+use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, DirtyChunks, SurfaceLinks, TerrainChunk, Tree, camera_chunk};
 use crate::meshes::chunk_mesh_to_bevy;
 use crate::scene::SpawnPoint;
-use crate::{UndergroundRes, WorldRes};
+use crate::{EditsRes, UndergroundRes, WorldRes};
 
 const COLUMN_JOBS_IN_FLIGHT: usize = 8;
 const COLUMNS_READY_PER_FRAME: usize = 3;
@@ -33,7 +34,11 @@ struct ColumnBuild {
     column: Arc<ColumnData>,
     /// (Chunk-Höhe, Mesh) für jeden 3D-Chunk mit Oberfläche.
     meshes: Vec<(i32, Mesh)>,
+    /// Verbindungen der Seiten der gebauten Chunks (für Cave Culling, #8).
+    links: Vec<(i32, FaceLinks)>,
     trees: Vec<TreePlacement>,
+    /// Neubau nach Graben/Bauen: ersetzt die geladene Spalte.
+    rebuild: bool,
 }
 
 #[derive(Resource, Default)]
@@ -63,6 +68,9 @@ pub(super) struct ColumnContext<'w> {
     chunks: ResMut<'w, ColumnMap>,
     jobs: ResMut<'w, ColumnJobs>,
     cache: ResMut<'w, ColumnCache>,
+    edits: Res<'w, EditsRes>,
+    dirty: ResMut<'w, DirtyChunks>,
+    links: ResMut<'w, SurfaceLinks>,
 }
 
 pub(super) fn stream_columns(
@@ -81,6 +89,7 @@ pub(super) fn stream_columns(
 
     let mut despawn_budget = COLUMN_DESPAWNS_PER_FRAME;
     let cache = &mut ctx.cache.0;
+    let surface_links = &mut ctx.links.0;
     ctx.chunks.0.retain(|position, entity| {
         if (position.x - center.x).abs() > radius + 1 || (position.y - center.y).abs() > radius + 1
         {
@@ -90,6 +99,7 @@ pub(super) fn stream_columns(
             despawn_budget -= 1;
             commands.entity(*entity).despawn();
             cache.remove(position);
+            surface_links.retain(|p, _| p.xz() != *position);
             false
         } else {
             true
@@ -101,7 +111,7 @@ pub(super) fn stream_columns(
     });
     ctx.jobs.ready.retain(|build| {
         let position = build.position;
-        !ctx.chunks.0.contains_key(&position)
+        (build.rebuild || !ctx.chunks.0.contains_key(&position))
             && (position.x - center.x).abs() <= radius + 2
             && (position.y - center.y).abs() <= radius + 2
     });
@@ -129,7 +139,7 @@ pub(super) fn stream_columns(
         let position = build.position;
         let far = (position.x - center.x).abs() > radius + 1
             || (position.y - center.y).abs() > radius + 1;
-        if far || ctx.chunks.0.contains_key(&position) {
+        if far || (!build.rebuild && ctx.chunks.0.contains_key(&position)) {
             continue;
         }
         if inserted >= COLUMNS_READY_PER_FRAME {
@@ -137,6 +147,20 @@ pub(super) fn stream_columns(
             continue;
         }
         ctx.cache.0.insert(position, Arc::clone(&build.column));
+        ctx.links.0.retain(|p, _| p.xz() != position);
+        for &(chunk_y, links) in &build.links {
+            ctx.links.0.insert(IVec3::new(position.x, chunk_y, position.y), links);
+        }
+        // Erneut gegen gefällte Bäume filtern: Der Job kann vor dem Fällen gestartet sein.
+        let mut build = build;
+        {
+            let edits = ctx.edits.0.read().expect("Edits-Lock vergiftet");
+            build.trees.retain(|tree| !edits.is_felled(tree.id));
+        }
+        // Neubau: alte Spalte erst entfernen, wenn die neue da ist (kein Flackern).
+        if let Some(old) = ctx.chunks.0.remove(&position) {
+            commands.entity(old).despawn();
+        }
         insert_column(
             &mut commands,
             &mut meshes,
@@ -148,7 +172,23 @@ pub(super) fn stream_columns(
     }
     ctx.jobs.ready = deferred;
 
+    // Neubau veränderter Spalten zuerst. Läuft für die Spalte schon ein Job oder wartet ein
+    // fertiger auf das Einfügen, bleibt die Markierung (der Job kennt die Änderung evtl. nicht)
+    // und der Neubau folgt danach. Die Markierung verschwindet erst, wenn ein Job startet.
     let mut missing = Vec::new();
+    let dirty: Vec<IVec2> = ctx.dirty.columns.iter().copied().collect();
+    for position in dirty {
+        let in_flight = ctx.jobs.pending.contains_key(&position) || ctx.jobs.ready.iter().any(|b| b.position == position);
+        if in_flight {
+            continue;
+        }
+        if ctx.chunks.0.contains_key(&position) {
+            missing.push((position, -1, true));
+        } else {
+            // Nicht geladen und kein Job: Beim Laden wird die Änderung ohnehin angewendet.
+            ctx.dirty.columns.remove(&position);
+        }
+    }
     for dz in -radius..=radius {
         for dx in -radius..=radius {
             let position = center + IVec2::new(dx, dz);
@@ -162,33 +202,62 @@ pub(super) fn stream_columns(
             {
                 continue;
             }
-            missing.push((position, dx * dx + dz * dz));
+            missing.push((position, dx * dx + dz * dz, false));
         }
     }
-    missing.sort_by_key(|(_, distance)| *distance);
+    missing.sort_by_key(|(_, distance, _)| *distance);
 
     let slots = COLUMN_JOBS_IN_FLIGHT.saturating_sub(ctx.jobs.pending.len());
-    for (position, _) in missing.into_iter().take(slots) {
+    for (position, _, rebuild) in missing.into_iter().take(slots) {
+        if rebuild {
+            ctx.dirty.columns.remove(&position);
+        }
         let world = Arc::clone(&ctx.world.0);
         let underground = Arc::clone(&ctx.underground.0);
+        let edits = Arc::clone(&ctx.edits.0);
+        // Beim Neubau die vorhandenen Höhen wiederverwenden.
+        let cached = if rebuild { ctx.cache.0.get(&position).cloned() } else { None };
         let task = AsyncComputeTaskPool::get().spawn(async move {
-            let column = ColumnData::sample(&world, position.x, position.y);
-            // Nur Chunks mit Oberfläche (inkl. Höhleneingängen). Reine Höhlen-Chunks
-            // darunter lädt das Höhlen-Streaming in Kameranähe.
-            let meshes = column
-                .surface_chunks()
-                .filter_map(|chunk_y| {
-                    let density = underground.density_chunk(&world, &column, chunk_y)?;
-                    let mesh = ChunkMesh::build(&world, &column, &density);
-                    (!mesh.is_empty()).then(|| (chunk_y, chunk_mesh_to_bevy(mesh)))
-                })
-                .collect();
+            let job_start = std::time::Instant::now();
+            let column = cached.unwrap_or_else(|| Arc::new(ColumnData::sample(&world, position.x, position.y)));
+            // Chunks mit Oberfläche (inkl. Höhleneingängen) und veränderte Chunks, die laut
+            // Generator Luft sind (z. B. Gebautes). Massive Chunks – auch veränderte – lädt das
+            // Höhlen-Streaming. Das Lock nur kurz halten, damit Graben nicht auf Jobs wartet.
+            let touched = edits.read().expect("Edits-Lock vergiftet").touched_in_column(position.x, position.y);
+            let mut heights: Vec<i32> = column.surface_chunks().collect();
+            for &chunk_y in &touched {
+                if column.classify(chunk_y) == ChunkKind::Air && !heights.contains(&chunk_y) {
+                    heights.push(chunk_y);
+                }
+            }
+            // Dichtefelder bleiben für die Bäume erhalten (#7).
+            let mut fields: HashMap<i32, DensityChunk> = HashMap::new();
+            let mut meshes = Vec::new();
+            let mut links = Vec::new();
+            for chunk_y in heights {
+                let density = if touched.contains(&chunk_y) {
+                    let mut chunk = underground.materials_chunk(&world, &column, chunk_y);
+                    edits.read().expect("Edits-Lock vergiftet").apply(&mut chunk);
+                    chunk
+                } else {
+                    match underground.density_chunk(&world, &column, chunk_y) {
+                        Some(chunk) => chunk,
+                        None => continue,
+                    }
+                };
+                let mesh = ChunkMesh::build(&world, &column, &density);
+                if !mesh.is_empty() {
+                    meshes.push((chunk_y, chunk_mesh_to_bevy(mesh)));
+                }
+                links.push((chunk_y, face_links(&density)));
+                fields.insert(chunk_y, density);
+            }
             let mut trees = plan_trees(
                 world.cfg.seed,
                 world.cfg.sea_level,
                 position.x,
                 position.y,
-                &column.heights,
+                column.heights(),
                 &column.biomes,
                 &column.temperatures,
             );
@@ -197,11 +266,49 @@ pub(super) fn stream_columns(
                 let world_z = position.y as f32 * CHUNK_SIZE + tree.position.z;
                 Vec2::new(world_x - clearing.x, world_z - clearing.z).length() > 17.0
             });
+            // Bäume auf die echte Oberfläche setzen (Höhleneingänge, Gegrabenes, Gebautes) und
+            // gefällte weglassen. Fehlende Dichtefelder (meist massiv) werden nur bei Bedarf gebaut.
+            let origin = Vec3::new(position.x as f32 * CHUNK_SIZE, 0.0, position.y as f32 * CHUNK_SIZE);
+            let mut density = |voxel: IVec3| {
+                let chunk_y = voxel.y.div_euclid(volume::CHUNK_SIZE);
+                let chunk = fields.entry(chunk_y).or_insert_with(|| {
+                    let mut chunk = underground.materials_chunk(&world, &column, chunk_y);
+                    edits.read().expect("Edits-Lock vergiftet").apply(&mut chunk);
+                    chunk
+                });
+                let o = chunk.origin();
+                chunk.get(voxel.x - o.x, voxel.y - o.y, voxel.z - o.z)
+            };
+            // Gefällte Bäume einmal pro Spalte abfragen (ein konsistenter Stand).
+            let felled: Vec<bool> = {
+                let edits = edits.read().expect("Edits-Lock vergiftet");
+                trees.iter().map(|tree| edits.is_felled(tree.id)).collect()
+            };
+            let mut felled = felled.into_iter();
+            trees.retain_mut(|tree| {
+                if felled.next().unwrap_or(false) {
+                    return false;
+                }
+                // Lokale Koordinaten: Voxel x/z liegen im eigenen Chunk (0..=32).
+                let root = Vec3::new(tree.position.x, tree.position.y, tree.position.z);
+                // Geplante Höhe an den Ecken aus der Spalte (lokal 0..=32).
+                let plan = |x: i32, z: i32| column.height(x, z);
+                match settle_tree(root, plan, |v| density(v + origin.as_ivec3())) {
+                    Some(y) => {
+                        tree.position.y = y;
+                        true
+                    }
+                    None => false,
+                }
+            });
+            crate::bench::record_job(crate::bench::JobKind::Column, job_start);
             ColumnBuild {
                 position,
-                column: Arc::new(column),
+                column,
                 meshes,
+                links,
                 trees,
+                rebuild,
             }
         });
         ctx.jobs.pending.insert(position, task);
@@ -248,7 +355,7 @@ fn insert_column(
         entity.with_children(|parent| {
             for tree in &trees {
                 parent.spawn((
-                    Tree,
+                    Tree(tree.id),
                     Mesh3d(assets.tree_meshes[tree_mesh_index(tree.style, tree.variant)].clone()),
                     MeshMaterial3d(assets.tree_material.clone()),
                     Transform::from_translation(tree.position)

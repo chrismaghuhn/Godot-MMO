@@ -1,7 +1,7 @@
 # Design: Datenmodell des Werkstücks
 
 Status: Entwurf (2026-10-26). Gehört zu [schmieden.md](schmieden.md), Entscheidungen in
-[D-015](../../DECISIONS.md#d-015-schmieden-als-simulation-statt-rezept).
+[D-019](../../DECISIONS.md#d-019-schmieden-als-simulation-statt-rezept).
 
 ## Grundprinzip: Ursachen speichern, Wirkungen berechnen
 

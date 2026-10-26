@@ -1,6 +1,6 @@
 # Design: Kampf
 
-Status: Entwurf (2026-10-26). Entscheidungen dazu: [D-016](../../DECISIONS.md#d-016-charakter-prozedural-first-person-mit-echtem-körper).
+Status: Entwurf (2026-10-26). Entscheidungen dazu: [D-020](../../DECISIONS.md#d-020-charakter-prozedural-first-person-mit-echtem-körper).
 
 Kampf ist **aktiv und körperbetont**, in First-Person, in Richtung Mount & Blade / Mordhau.
 Waffen kommen aus der Schmiede-Simulation ([schmieden.md](schmieden.md)), Körper und Bewegung

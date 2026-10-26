@@ -31,7 +31,9 @@ pub struct ColumnData {
     pub chunk_x: i32,
     pub chunk_z: i32,
     /// `heights[z][x]` für lokale Koordinaten `x, z` in `-1..=CHUNK_SIZE + 1` (Index = lokal + 1).
-    pub heights: [[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES],
+    /// Nur im Core veränderbar (Tests), weil abgeleitete Werte zwischengespeichert werden (#42);
+    /// von außen über `heights()` lesen.
+    pub(crate) heights: [[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES],
     /// Biome mit derselben Indizierung wie `heights`.
     pub biomes: [[BiomeRef; COLUMN_SAMPLES]; COLUMN_SAMPLES],
     /// Temperatur (-1..1) mit derselben Indizierung wie `heights`, z. B. für die Baumart (#40).
@@ -42,6 +44,10 @@ pub struct ColumnData {
     rivers: Vec<f32>,
     /// Oberflächenfarbe (sRGB) mit weichem Übergang an Regionsgrenzen (#50).
     colors: Vec<[u8; 3]>,
+    /// Zwischenspeicher für Ableitungen aus den (öffentlichen) Höhen, die der Untergrund pro
+    /// Spalte nur einmal berechnen will (#42). Gilt nur, solange `heights` unverändert ist.
+    #[cfg_attr(not(feature = "underground"), allow(dead_code))]
+    pub(crate) shell_cache: std::sync::OnceLock<Vec<f32>>,
     min_height: f32,
     max_height: f32,
 }
@@ -66,6 +72,7 @@ impl ColumnData {
             geology: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             rivers: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             colors: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
+            shell_cache: std::sync::OnceLock::new(),
             min_height: f32::INFINITY,
             max_height: f32::NEG_INFINITY,
         };
@@ -117,6 +124,11 @@ impl ColumnData {
             }
         }
         column
+    }
+
+    /// Alle Höhen (`heights[z][x]`, Index = lokal + 1), z. B. für die Baumplanung.
+    pub fn heights(&self) -> &[[f32; COLUMN_SAMPLES]; COLUMN_SAMPLES] {
+        &self.heights
     }
 
     /// Höhe an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).
@@ -258,6 +270,16 @@ impl DensityChunk {
         debug_assert!(self.values[index] > 0.0, "Material für Luft gesetzt (Sample {x},{y},{z})");
         debug_assert!(!material.is_air(), "Luft als Material gesetzt (Sample {x},{y},{z})");
         self.materials[index] = material;
+    }
+
+    /// Setzt Dichte und Material eines Samples gemeinsam (Spieler-Änderungen, #6). Hält die
+    /// Invariante ein: Dichte <= 0 ⇔ Luft.
+    #[inline]
+    pub(crate) fn set_voxel(&mut self, x: i32, y: i32, z: i32, density: f32, material: MaterialId) {
+        let index = sample_index(x, y, z);
+        debug_assert!(density <= 0.0 || !material.is_air(), "festes Sample ohne Material ({x},{y},{z})");
+        self.values[index] = density;
+        self.materials[index] = if density <= 0.0 { MaterialId::AIR } else { material };
     }
 
     /// Weltposition der lokalen Koordinate (0, 0, 0).
