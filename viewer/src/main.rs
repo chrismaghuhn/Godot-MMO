@@ -16,7 +16,7 @@
 //! `TERRAFORGE_NO_FOG`, `TERRAFORGE_FPS_CAP`, `TERRAFORGE_SHOT`, `TERRAFORGE_SHOT_AFTER`,
 //! `TERRAFORGE_SECRET_SEED` (geheimer Untergrund-Seed; ohne: unsicherer Entwickler-Seed),
 //! `TERRAFORGE_CAVE_RADIUS`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW` (Grad), `TERRAFORGE_HEADLAMP`,
-//! `TERRAFORGE_FAR` (0 = ohne Fernterrain), `TERRAFORGE_AUTODIG` (n-mal graben beim Start), `TERRAFORGE_BENCH`/`TERRAFORGE_BENCH_OUT`, `TERRAFORGE_XRAY` (Röntgenmodus beim Start).
+//! `TERRAFORGE_FAR` (0 = ohne Fernterrain), `TERRAFORGE_AUTODIG` (n-mal graben beim Start), `TERRAFORGE_BENCH`/`TERRAFORGE_BENCH_OUT`, `TERRAFORGE_XRAY` (Röntgenmodus beim Start), `TERRAFORGE_CULL` (0 = ohne Cave Culling).
 
 mod bench;
 mod controls;

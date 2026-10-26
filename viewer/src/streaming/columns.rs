@@ -10,11 +10,12 @@ use bevy::{
 };
 use terraforge_core::{
     mesh::ChunkMesh,
+    occlusion::{FaceLinks, face_links},
     vegetation::{TreePlacement, TreeStyle, plan_trees, settle_tree},
     volume::{self, ChunkKind, ColumnData, DensityChunk},
 };
 
-use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, DirtyChunks, TerrainChunk, Tree, camera_chunk};
+use super::{CHUNK_SIZE, ChunkAssets, ColumnCache, DirtyChunks, SurfaceLinks, TerrainChunk, Tree, camera_chunk};
 use crate::meshes::chunk_mesh_to_bevy;
 use crate::scene::SpawnPoint;
 use crate::{EditsRes, UndergroundRes, WorldRes};
@@ -33,6 +34,8 @@ struct ColumnBuild {
     column: Arc<ColumnData>,
     /// (Chunk-Höhe, Mesh) für jeden 3D-Chunk mit Oberfläche.
     meshes: Vec<(i32, Mesh)>,
+    /// Verbindungen der Seiten der gebauten Chunks (für Cave Culling, #8).
+    links: Vec<(i32, FaceLinks)>,
     trees: Vec<TreePlacement>,
     /// Neubau nach Graben/Bauen: ersetzt die geladene Spalte.
     rebuild: bool,
@@ -67,6 +70,7 @@ pub(super) struct ColumnContext<'w> {
     cache: ResMut<'w, ColumnCache>,
     edits: Res<'w, EditsRes>,
     dirty: ResMut<'w, DirtyChunks>,
+    links: ResMut<'w, SurfaceLinks>,
 }
 
 pub(super) fn stream_columns(
@@ -85,6 +89,7 @@ pub(super) fn stream_columns(
 
     let mut despawn_budget = COLUMN_DESPAWNS_PER_FRAME;
     let cache = &mut ctx.cache.0;
+    let surface_links = &mut ctx.links.0;
     ctx.chunks.0.retain(|position, entity| {
         if (position.x - center.x).abs() > radius + 1 || (position.y - center.y).abs() > radius + 1
         {
@@ -94,6 +99,7 @@ pub(super) fn stream_columns(
             despawn_budget -= 1;
             commands.entity(*entity).despawn();
             cache.remove(position);
+            surface_links.retain(|p, _| p.xz() != *position);
             false
         } else {
             true
@@ -141,6 +147,10 @@ pub(super) fn stream_columns(
             continue;
         }
         ctx.cache.0.insert(position, Arc::clone(&build.column));
+        ctx.links.0.retain(|p, _| p.xz() != position);
+        for &(chunk_y, links) in &build.links {
+            ctx.links.0.insert(IVec3::new(position.x, chunk_y, position.y), links);
+        }
         // Erneut gegen gefällte Bäume filtern: Der Job kann vor dem Fällen gestartet sein.
         let mut build = build;
         {
@@ -223,6 +233,7 @@ pub(super) fn stream_columns(
             // Dichtefelder bleiben für die Bäume erhalten (#7).
             let mut fields: HashMap<i32, DensityChunk> = HashMap::new();
             let mut meshes = Vec::new();
+            let mut links = Vec::new();
             for chunk_y in heights {
                 let density = if touched.contains(&chunk_y) {
                     let mut chunk = underground.materials_chunk(&world, &column, chunk_y);
@@ -238,6 +249,7 @@ pub(super) fn stream_columns(
                 if !mesh.is_empty() {
                     meshes.push((chunk_y, chunk_mesh_to_bevy(mesh)));
                 }
+                links.push((chunk_y, face_links(&density)));
                 fields.insert(chunk_y, density);
             }
             let mut trees = plan_trees(
@@ -294,6 +306,7 @@ pub(super) fn stream_columns(
                 position,
                 column,
                 meshes,
+                links,
                 trees,
                 rebuild,
             }

@@ -6,7 +6,7 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::controls::WalkMode;
 use crate::dig::DigStatus;
-use crate::streaming::{CaveChunk, CaveJobs, ColumnJobs, ColumnMap, FarTileMarker, TerrainChunk, Tree};
+use crate::streaming::{CaveChunk, CaveJobs, ColumnJobs, ColumnMap, CullStats, FarTileMarker, TerrainChunk, Tree};
 use crate::WorldRes;
 
 pub struct OverlayPlugin;
@@ -45,6 +45,7 @@ struct PerfContext<'w> {
     world: Res<'w, WorldRes>,
     walk: Res<'w, WalkMode>,
     dig: Res<'w, DigStatus>,
+    cull: Res<'w, CullStats>,
     stats: ResMut<'w, PerfStats>,
 }
 
@@ -132,7 +133,7 @@ fn perf_overlay(
 
     text.0 = format!(
         "FPS {:>4.0}   Frame {:>5.2} ms   p95 {:>5.2} ms   max {:>5.2} ms\n\
-         Spalten {:>3}   3D-Chunks {:>4} (Höhlen {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Fern {:>3}   Seed {}\n\
+         Spalten {:>3}   3D-Chunks {:>4} (Höhlen {:>3}, sichtbar {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Fern {:>3}   Seed {}\n\
          X {:>7.1}   Y {:>6.1}   Z {:>7.1}   {}   [F3]\n\
          {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}\n\
          [Klick] graben  [B] bauen  [X] fällen  [R] Röntgen  [T] {}   {}",
@@ -143,6 +144,7 @@ fn perf_overlay(
         ctx.chunks.0.len(),
         counts.terrain.iter().count(),
         counts.caves.iter().count(),
+        ctx.cull.shown,
         ctx.jobs.pending_count(),
         ctx.jobs.ready_count(),
         ctx.cave_jobs.pending_count(),

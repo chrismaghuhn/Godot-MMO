@@ -17,7 +17,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use terraforge_core::volume::{self, ColumnData};
 
-pub use caves::{CaveChunk, CaveJobs};
+pub use caves::{CaveChunk, CaveJobs, CullStats};
 pub use columns::{ColumnJobs, ColumnMap};
 pub use far::{FAR_GUARANTEED, FAR_VIEW, FarTileMarker, MAX_VIEW_RADIUS};
 
@@ -39,10 +39,14 @@ impl Plugin for StreamingPlugin {
             .init_resource::<caves::CaveMap>()
             .init_resource::<CaveJobs>()
             .init_resource::<DirtyChunks>()
+            .init_resource::<CullStats>()
+            .init_resource::<SurfaceLinks>()
             .insert_resource(far::FarState::from_env())
             .add_systems(
                 Update,
-                (columns::stream_columns, caves::stream_caves, far::stream_far).chain().in_set(StreamingSet),
+                (columns::stream_columns, caves::stream_caves, caves::cull_caves, far::stream_far)
+                    .chain()
+                    .in_set(StreamingSet),
             );
     }
 }
@@ -61,6 +65,11 @@ pub struct DirtyChunks {
     pub columns: HashSet<IVec2>,
     pub caves: HashSet<IVec3>,
 }
+
+/// Verbindungen der Seiten der von Spalten gebauten Chunks (Oberfläche, Gebautes) für Cave
+/// Culling (#8). Fehlt ein Eintrag, gilt der Chunk als offen (vorsichtig).
+#[derive(Resource, Default)]
+pub struct SurfaceLinks(pub HashMap<IVec3, terraforge_core::occlusion::FaceLinks>);
 
 /// Höhen und Biome der geladenen Spalten, geteilt mit den Höhlen-Jobs.
 #[derive(Resource, Default)]
