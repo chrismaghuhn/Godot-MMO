@@ -285,7 +285,7 @@ fn client_chunks_show_only_exposed_ores() {
                 let (before, after) = (full.material(x, y, z), filtered.material(x, y, z));
                 assert_eq!(full.get(x, y, z).to_bits(), filtered.get(x, y, z).to_bits(), "Dichte verändert");
                 let voxel = origin + glam::IVec3::new(x, y, z);
-                let has_air = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
+                let has_air = super::visibility::NEIGHBOURS_26
                     .iter()
                     .any(|&(dx, dy, dz)| cache.air(voxel + glam::IVec3::new(dx, dy, dz)));
                 match (OreKind::from_material(before), OreKind::from_material(after)) {
@@ -347,4 +347,31 @@ fn filtered_chunks_agree_on_shared_samples() {
         }
     }
     assert!(ore_on_faces > 0, "kein freiliegendes Erz an einer Chunk-Grenze im Test");
+}
+
+/// Der Filter verändert nichts, was das Mesh zeigt: Vertex-Materialien von vollem und gefiltertem
+/// Chunk sind identisch (sonst fehlten freiliegende Erze beim Client oder es lägen verborgene offen).
+#[test]
+fn filter_keeps_every_rendered_material() {
+    let (world, underground) = setup(21);
+    let mut cache = Chunks::new(&world, &underground);
+    let mut ore_vertices = 0;
+    for column in columns(&world).into_iter().take(16) {
+        for chunk_y in -4..=1 {
+            let position = glam::IVec3::new(column.chunk_x, chunk_y, column.chunk_z);
+            let full = crate::mesh::surface_nets(&underground.materials_chunk(&world, &column, chunk_y));
+            let filtered = crate::mesh::surface_nets(&cache.filtered(position));
+            assert_eq!(full.positions, filtered.positions, "Geometrie verändert bei {position}");
+            assert_eq!(full.materials, filtered.materials, "sichtbares Material verändert bei {position}");
+            ore_vertices += full.materials.iter().filter(|m| OreKind::from_material(**m).is_some()).count();
+        }
+    }
+    assert!(ore_vertices > 100, "zu wenige Erz-Vertices im Test: {ore_vertices}");
+}
+
+#[test]
+fn neighbours_26_are_unique_and_exclude_the_centre() {
+    let set: std::collections::HashSet<_> = super::visibility::NEIGHBOURS_26.iter().collect();
+    assert_eq!(set.len(), 26);
+    assert!(!set.contains(&(0, 0, 0)));
 }

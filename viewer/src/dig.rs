@@ -219,6 +219,7 @@ fn dig_input(
     // nicht geladen, geht die Markierung an die Spalten und verfällt dort (beim Laden wird die
     // Änderung ohnehin angewendet).
     for chunk in affected {
+        dirty.xray.insert(chunk);
         let solid = columns.0.get(&chunk.xz()).is_some_and(|column| column.classify(chunk.y) == ChunkKind::Solid);
         if solid {
             dirty.caves.insert(chunk);

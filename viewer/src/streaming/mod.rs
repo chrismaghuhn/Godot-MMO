@@ -64,6 +64,8 @@ pub struct ChunkAssets {
 pub struct DirtyChunks {
     pub columns: HashSet<IVec2>,
     pub caves: HashSet<IVec3>,
+    /// Alle veränderten Chunks, für die Erz-Marker des Röntgenmodus (#47).
+    pub xray: HashSet<IVec3>,
 }
 
 /// Verbindungen der Seiten der von Spalten gebauten Chunks (Oberfläche, Gebautes) für Cave

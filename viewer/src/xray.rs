@@ -20,7 +20,7 @@ use terraforge_core::{
     volume::{CHUNK_SIZE, ColumnData},
 };
 
-use crate::streaming::{ChunkAssets, ColumnCache};
+use crate::streaming::{ChunkAssets, ColumnCache, DirtyChunks};
 use crate::{EditsRes, UndergroundRes, WorldRes};
 
 const RADIUS: i32 = 1;
@@ -65,7 +65,10 @@ fn xray(
     mut meshes: ResMut<Assets<Mesh>>,
     mut state: ResMut<Xray>,
     mut start: ResMut<XrayStart>,
+    mut dirty: ResMut<DirtyChunks>,
 ) {
+    // Gegrabene/gebaute Chunks: Marker neu bauen (Review-Fund: sonst schwebten abgebaute Erze).
+    let changed = std::mem::take(&mut dirty.xray);
     let start_now = std::mem::take(&mut start.0);
     if keys.just_pressed(KeyCode::KeyR) || start_now {
         state.enabled = !state.enabled;
@@ -116,7 +119,9 @@ fn xray(
                 .spawn((OreMarker, Mesh3d(meshes.add(mesh)), MeshMaterial3d(material.clone()), Transform::from_translation(position.as_vec3() * CHUNK_SIZE as f32)))
                 .id()
         });
-        state.markers.insert(position, entity);
+        if let Some(Some(old)) = state.markers.insert(position, entity) {
+            commands.entity(old).despawn();
+        }
     }
     let stale: Vec<IVec3> = state.markers.keys().filter(|p| !wanted.contains(p)).copied().collect();
     for position in stale {
@@ -127,7 +132,8 @@ fn xray(
 
     // Neue Jobs.
     for position in wanted {
-        if state.markers.contains_key(&position) || state.pending.contains_key(&position) {
+        let known = state.markers.contains_key(&position) || state.pending.contains_key(&position);
+        if known && !changed.contains(&position) {
             continue;
         }
         let (world, underground, edits) = (Arc::clone(&world.0), Arc::clone(&underground.0), Arc::clone(&edits.0));

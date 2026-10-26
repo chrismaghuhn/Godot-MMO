@@ -2,8 +2,11 @@
 //! Cave Culling: Ein Chunk kann nur durch Seiten "hindurchgesehen" werden, die über
 //! zusammenhängende Luft verbunden sind.
 //!
-//! Betrachtet werden die eigenen Samples `0..CHUNK_SIZE` je Achse (6er-Nachbarschaft). Eine
-//! Luft-Komponente berührt eine Seite, wenn sie ein Sample in der äußersten Lage dieser Seite hat.
+//! Betrachtet werden die Samples `0..=CHUNK_SIZE` je Achse (6er-Nachbarschaft) – genau die, aus
+//! denen der Chunk seine Geometrie baut (Surface Nets erzeugt auch die Kanten 31→32). Die Lage
+//! `CHUNK_SIZE` ist dieselbe wie Lage 0 des Nachbarn, deshalb sehen beide Chunks an der gemeinsamen
+//! Seite dieselbe Luft (Review-Fund: sonst wurden Wände eines Chunks an der Höhle des Nachbarn
+//! weggecullt). Eine Luft-Komponente berührt eine Seite, wenn sie ein Sample in deren Lage hat.
 
 use std::collections::VecDeque;
 
@@ -47,7 +50,8 @@ pub fn face_offset(face: usize) -> [i32; 3] {
 
 /// Verbindungen der Seiten eines Chunks durch Luft.
 pub fn face_links(chunk: &DensityChunk) -> FaceLinks {
-    let n = CHUNK_SIZE as usize;
+    // Samples je Achse: 0..=CHUNK_SIZE.
+    let n = CHUNK_SIZE as usize + 1;
     let index = |x: usize, y: usize, z: usize| (z * n + y) * n + x;
     let mut seen = vec![false; n * n * n];
     let mut links = FaceLinks::NONE;
@@ -145,6 +149,17 @@ mod tests {
         // Ein Hohlraum ganz im Inneren berührt keine Seite.
         let inner = face_links(&chunk_with(|x, y, z| if (10..20).contains(&x) && (10..20).contains(&y) && (10..20).contains(&z) { -1.0 } else { 1.0 }));
         assert_eq!(inner, FaceLinks::NONE);
+    }
+
+    /// Luft nur in der gemeinsamen Lage mit dem +x-Nachbarn: Der Chunk baut dort Wände, also muss
+    /// er von dieser Seite aus erreichbar sein.
+    #[test]
+    fn shared_border_layer_counts() {
+        let links = face_links(&chunk_with(|x, _, _| if x == CHUNK_SIZE { -1.0 } else { 1.0 }));
+        assert!(links.open(1), "Seite +x mit Luft in Lage 32 gilt als zu");
+        assert!(!links.open(0));
+        let links = face_links(&chunk_with(|_, y, _| if y == 0 { -1.0 } else { 1.0 }));
+        assert!(links.open(2) && !links.open(3));
     }
 
     #[test]

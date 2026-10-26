@@ -268,6 +268,7 @@ pub(super) fn stream_caves(
 /// wenn sie mit der Eintrittsseite durch Luft verbunden ist. Verbindungen kennen wir für Höhlen-
 /// und Oberflächen-Chunks; reine Luft und noch fehlende Daten gelten als offen (vorsichtig),
 /// massive Chunks ohne Daten als geschlossen.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn cull_caves(
     camera: Query<&Transform, With<Camera3d>>,
     settings: Res<CaveSettings>,
@@ -276,18 +277,16 @@ pub(super) fn cull_caves(
     surface: Res<SurfaceLinks>,
     mut visibility: Query<&mut Visibility, With<CaveChunk>>,
     mut stats: ResMut<CullStats>,
+    xray: Res<crate::xray::Xray>,
 ) {
     let Ok(transform) = camera.single() else {
         return;
     };
     let start = camera_chunk(transform.translation);
     let limit = settings.radius + 2;
-    // `TERRAFORGE_CULL=0` zeichnet alles (zum Vergleichen).
-    if !settings.cull {
-        stats.shown = map.0.values().filter(|e| e.entity.is_some()).count();
-        stats.hidden = 0;
-        return;
-    }
+    // `TERRAFORGE_CULL=0` zeichnet alles (zum Vergleichen); im Röntgenmodus sollen alle Höhlen
+    // durch den Fels sichtbar sein.
+    let cull = settings.cull && !xray.enabled;
     let links_at = |position: IVec3| -> FaceLinks {
         if let Some(entry) = map.0.get(&position) {
             return entry.links;
@@ -301,12 +300,12 @@ pub(super) fn cull_caves(
             _ => FaceLinks::ALL,
         }
     };
-    let reached = reachable_chunks(start, limit, links_at);
+    let reached = if cull { reachable_chunks(start, limit, links_at) } else { Default::default() };
     let (mut shown, mut hidden) = (0, 0);
     for (position, entry) in &map.0 {
         let Some(entity) = entry.entity else { continue };
         let Ok(mut current) = visibility.get_mut(entity) else { continue };
-        let target = if reached.contains(position) {
+        let target = if !cull || shown_by_culling(*position, start, limit, &reached) {
             shown += 1;
             Visibility::Inherited
         } else {
@@ -319,6 +318,13 @@ pub(super) fn cull_caves(
     }
     stats.shown = shown;
     stats.hidden = hidden;
+}
+
+/// Ob ein Höhlen-Chunk gezeichnet wird. Jenseits der Suchgrenze weiß die Suche nichts, solche
+/// Chunks (z. B. tiefe gegrabene Schächte, die das Streaming in allen Spalten hält) bleiben
+/// sichtbar (Review-Fund: sonst sah man durch sie hindurch).
+fn shown_by_culling(position: IVec3, start: IVec3, limit: i32, reached: &std::collections::HashSet<IVec3>) -> bool {
+    distance(position, start) > limit || reached.contains(&position)
 }
 
 /// Zahl der sichtbaren und ausgeblendeten Höhlen-Chunks (für das Overlay).
@@ -377,6 +383,14 @@ mod tests {
             links.0[b] |= (1 << a) | (1 << b);
         }
         links
+    }
+
+    #[test]
+    fn chunks_beyond_the_search_limit_stay_visible() {
+        let reached = reachable_chunks(IVec3::ZERO, 2, |_| FaceLinks::NONE);
+        assert!(!shown_by_culling(IVec3::new(0, -2, 0), IVec3::ZERO, 2, &reached), "abgeschlossener Chunk in Reichweite sichtbar");
+        assert!(shown_by_culling(IVec3::new(0, -3, 0), IVec3::ZERO, 2, &reached), "Chunk jenseits der Suchgrenze ausgeblendet");
+        assert!(shown_by_culling(IVec3::ZERO, IVec3::ZERO, 2, &reached), "Kamera-Chunk ausgeblendet");
     }
 
     #[test]

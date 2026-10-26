@@ -10,6 +10,7 @@
 //! Programme erzeugen eigene Hänger (#38). Der Bericht zeigt deshalb Fokus und Systemlast mit an.
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use bevy::{app::AppExit, prelude::*, window::PrimaryWindow};
@@ -30,8 +31,14 @@ pub enum JobKind {
 /// können; nur im Benchmark relevant.
 static JOB_TIMES: Mutex<[Vec<f32>; 3]> = Mutex::new([Vec::new(), Vec::new(), Vec::new()]);
 
-/// Trägt die Dauer eines Jobs ein (seit `start`).
+/// Nur bei laufendem Benchmark sammeln, sonst wüchse `JOB_TIMES` die ganze Sitzung (Review-Fund).
+static ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Trägt die Dauer eines Jobs ein (seit `start`), falls der Benchmark läuft.
 pub fn record_job(kind: JobKind, start: Instant) {
+    if !ACTIVE.load(Ordering::Relaxed) {
+        return;
+    }
     let ms = start.elapsed().as_secs_f32() * 1000.0;
     if let Ok(mut times) = JOB_TIMES.lock() {
         times[kind as usize].push(ms);
@@ -43,6 +50,7 @@ pub struct BenchPlugin;
 impl Plugin for BenchPlugin {
     fn build(&self, app: &mut App) {
         if let Some(seconds) = env_parse::<f32>("TERRAFORGE_BENCH").filter(|s| *s > 0.0) {
+            ACTIVE.store(true, Ordering::Relaxed);
             app.insert_resource(Bench { seconds, frames: Vec::new(), unfocused_frames: 0, done: false })
                 .add_systems(Last, bench);
         }
