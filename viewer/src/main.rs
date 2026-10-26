@@ -6,6 +6,7 @@
 //! - `meshes`:    Core-Meshes → Bevy-Meshes
 //! - `controls`:  Laufmodus und Autopilot
 //! - `overlay`:   F3-Overlay
+//! - `bench`:     Benchmark-Modus (`TERRAFORGE_BENCH=sekunden`, #9)
 //! - `devtools`:  Framelimiter, Auto-Screenshot
 //! - `dig`:       Graben und Bauen (Linksklick, `B`, Werkzeug mit `T`)
 //!
@@ -14,8 +15,9 @@
 //! `TERRAFORGE_NO_FOG`, `TERRAFORGE_FPS_CAP`, `TERRAFORGE_SHOT`, `TERRAFORGE_SHOT_AFTER`,
 //! `TERRAFORGE_SECRET_SEED` (geheimer Untergrund-Seed; ohne: unsicherer Entwickler-Seed),
 //! `TERRAFORGE_CAVE_RADIUS`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW` (Grad), `TERRAFORGE_HEADLAMP`,
-//! `TERRAFORGE_FAR` (0 = ohne Fernterrain), `TERRAFORGE_AUTODIG` (n-mal graben beim Start).
+//! `TERRAFORGE_FAR` (0 = ohne Fernterrain), `TERRAFORGE_AUTODIG` (n-mal graben beim Start), `TERRAFORGE_BENCH`/`TERRAFORGE_BENCH_OUT`.
 
+mod bench;
 mod controls;
 mod devtools;
 mod dig;
@@ -87,6 +89,7 @@ fn main() {
             overlay::OverlayPlugin,
             devtools::DevToolsPlugin,
             dig::DigPlugin,
+            bench::BenchPlugin,
         ))
         .add_systems(Startup, scene::setup_scene)
         .add_systems(Update, scene::water_follows_camera)

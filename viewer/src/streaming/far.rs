@@ -268,6 +268,7 @@ pub(super) fn stream_far(
     for (key, hole, _) in missing.into_iter().take(slots) {
         let world = Arc::clone(&world.0);
         let task = AsyncComputeTaskPool::get().spawn(async move {
+            let job_start = std::time::Instant::now();
             let (size, step) = if key.level == 1 { (LEVEL1_TILE, LEVEL1_STEP) } else { (LEVEL2_TILE, LEVEL2_STEP) };
             let tile = FarTile {
                 origin_x: key.x as f32 * size,
@@ -277,7 +278,9 @@ pub(super) fn stream_far(
                 skirt: if key.level == 1 { 12.0 } else { 40.0 },
             };
             let mesh = tile.build(&world, |x, z| hole.is_some_and(|h| x >= h.0 && x < h.2 && z >= h.1 && z < h.3));
-            FarBuild { key, hole, mesh: (!mesh.is_empty()).then(|| chunk_mesh_to_bevy(mesh)) }
+            let build = FarBuild { key, hole, mesh: (!mesh.is_empty()).then(|| chunk_mesh_to_bevy(mesh)) };
+            crate::bench::record_job(crate::bench::JobKind::Far, job_start);
+            build
         });
         state.pending.insert(key, (task, hole));
     }

@@ -208,6 +208,7 @@ pub(super) fn stream_columns(
         // Beim Neubau die vorhandenen Höhen wiederverwenden.
         let cached = if rebuild { ctx.cache.0.get(&position).cloned() } else { None };
         let task = AsyncComputeTaskPool::get().spawn(async move {
+            let job_start = std::time::Instant::now();
             let column = cached.unwrap_or_else(|| Arc::new(ColumnData::sample(&world, position.x, position.y)));
             // Chunks mit Oberfläche (inkl. Höhleneingängen) und veränderte Chunks, die laut
             // Generator Luft sind (z. B. Gebautes). Massive Chunks – auch veränderte – lädt das
@@ -288,6 +289,7 @@ pub(super) fn stream_columns(
                     None => false,
                 }
             });
+            crate::bench::record_job(crate::bench::JobKind::Column, job_start);
             ColumnBuild {
                 position,
                 column,

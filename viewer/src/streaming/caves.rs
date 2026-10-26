@@ -226,6 +226,7 @@ pub(super) fn stream_caves(
         let underground = Arc::clone(&ctx.underground.0);
         let edits = Arc::clone(&ctx.edits.0);
         let task = AsyncComputeTaskPool::get().spawn(async move {
+            let job_start = std::time::Instant::now();
             // Lock nur kurz halten, damit Graben nicht auf Jobs wartet.
             let touched = edits.read().expect("Edits-Lock vergiftet").touches(position);
             let density = if touched {
@@ -239,6 +240,7 @@ pub(super) fn stream_caves(
                 .map(|density| ChunkMesh::build(&world, &column, &density))
                 .filter(|mesh| !mesh.is_empty())
                 .map(chunk_mesh_to_bevy);
+            crate::bench::record_job(crate::bench::JobKind::Cave, job_start);
             CaveBuild { position, mesh }
         });
         ctx.jobs.pending.insert(position, task);
