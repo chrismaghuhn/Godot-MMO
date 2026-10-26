@@ -383,3 +383,54 @@ fn shell_protects_a_synthetic_pit_against_caves_everywhere() {
     }
     assert!(checked > 500, "zu wenige Oberflächen-Zellen: {checked}");
 }
+
+/// #7: Mit Höhlen (inkl. Eingängen) steht kein Baum in der Luft, unter einer Höhlendecke oder
+/// über einem Loch: Jeder gesetzte Baum hat festen Boden unter und Freiraum über der Wurzel.
+#[test]
+fn settled_trees_stand_on_the_volume_surface() {
+    use crate::vegetation::{plan_trees, settle_tree};
+    use std::collections::HashMap;
+    let world = WorldGen::new(42);
+    let underground = Underground::new(SecretSeed::insecure_dev_seed(42), &world.cfg);
+    let (mut planned, mut kept) = (0, 0);
+    // Spalten rund um große Höhleneingänge (Messung mit diesem Seed) und Zufallsorte.
+    let mut columns = Vec::new();
+    for (x, z) in [(-363.9f32, -1728.4f32), (30.8, -1039.5), (1991.9, 1877.1), (0.0, 0.0), (700.0, -300.0)] {
+        let (cx, cz) = ((x / CHUNK_SIZE as f32).floor() as i32, (z / CHUNK_SIZE as f32).floor() as i32);
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                columns.push((cx + dx, cz + dz));
+            }
+        }
+    }
+    for (chunk_x, chunk_z) in columns {
+        let column = ColumnData::sample(&world, chunk_x, chunk_z);
+        let mut chunks: HashMap<i32, DensityChunk> = HashMap::new();
+        let mut density = |v: glam::IVec3| {
+            let chunk_y = v.y.div_euclid(CHUNK_SIZE);
+            let chunk = chunks.entry(chunk_y).or_insert_with(|| underground.materials_chunk(&world, &column, chunk_y));
+            let origin = chunk.origin();
+            chunk.get(v.x - origin.x, v.y - origin.y, v.z - origin.z)
+        };
+        let trees = plan_trees(world.cfg.seed, world.cfg.sea_level, chunk_x, chunk_z, column.heights(), &column.biomes, &column.temperatures);
+        for tree in trees {
+            planned += 1;
+            let root = glam::Vec3::new(
+                (chunk_x * CHUNK_SIZE) as f32 + tree.position.x,
+                tree.position.y,
+                (chunk_z * CHUNK_SIZE) as f32 + tree.position.z,
+            );
+            // Nur lokale Lookups im eigenen Spalten-Chunk (x, z innerhalb 0..32).
+            let Some(y) = settle_tree(root, |v| density(v)) else { continue };
+            kept += 1;
+            let (x, z) = (root.x.round() as i32, root.z.round() as i32);
+            let ground = density(glam::IVec3::new(x, (y + 0.25).floor() as i32, z));
+            let over = density(glam::IVec3::new(x, (y + 0.25).floor() as i32 + 2, z));
+            assert!(ground > 0.0, "Baum ohne Boden bei {x},{y},{z}");
+            assert!(over <= 0.0, "Baum unter einer Decke bei {x},{y},{z}");
+        }
+    }
+    eprintln!("Bäume: {kept} von {planned} gesetzt");
+    assert!(planned > 100);
+    assert!(kept * 100 >= planned * 90, "zu viele Bäume entfernt: {kept}/{planned}");
+}

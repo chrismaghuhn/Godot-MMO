@@ -3,7 +3,7 @@
 use glam::Vec3;
 
 use super::rng::{Rng, hash01, hash_cell};
-use super::{TreePlacement, TreeStyle};
+use super::{TreeId, TreePlacement, TreeStyle};
 use crate::biome::FamilyKind;
 use crate::world::BiomeRef;
 
@@ -78,6 +78,7 @@ pub fn plan_trees<const N: usize>(
                 _ => (0.65, 0.95),
             };
             trees.push(TreePlacement {
+                id: TreeId { chunk_x, chunk_z, cell: (z * cells + x) as u16 },
                 style,
                 variant,
                 position: Vec3::new(x as f32 + anchor_x, height - 0.25, z as f32 + anchor_z),

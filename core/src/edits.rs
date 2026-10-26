@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use glam::{IVec3, Vec3};
 
 use crate::material::{MaterialId, MaterialRegistry};
+use crate::vegetation::TreeId;
 use crate::volume::{CHUNK_SIZE, DensityChunk, SAMPLE_MIN};
 
 /// Dichte und Material eines Voxels.
@@ -39,6 +40,8 @@ pub struct WorldEdits {
     by_owner: HashMap<IVec3, HashMap<IVec3, Voxel>>,
     /// Chunks, deren Sample-Bereich (`-1..=CHUNK_SIZE`) mindestens eine Änderung enthält.
     touched: HashSet<IVec3>,
+    /// Gefällte Bäume (#7; Axt und Holz-Ausbeute später, #21).
+    felled: HashSet<TreeId>,
 }
 
 /// Ergebnis von `dig_sphere`.
@@ -84,7 +87,16 @@ pub fn chunks_containing(voxel: IVec3) -> impl Iterator<Item = IVec3> {
 
 impl WorldEdits {
     pub fn is_empty(&self) -> bool {
-        self.by_owner.is_empty()
+        self.by_owner.is_empty() && self.felled.is_empty()
+    }
+
+    /// Fällt einen Baum. `false`, wenn er schon gefällt war.
+    pub fn fell_tree(&mut self, id: TreeId) -> bool {
+        self.felled.insert(id)
+    }
+
+    pub fn is_felled(&self, id: TreeId) -> bool {
+        self.felled.contains(&id)
     }
 
     /// Anzahl geänderter Voxel.

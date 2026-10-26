@@ -302,3 +302,45 @@ fn apply_reaches_edits_owned_by_a_neighbour() {
     assert_eq!(local.x, CHUNK_SIZE);
     assert!(chunk.get(local.x, local.y, local.z) <= 0.0, "Änderung des Nachbarn fehlt");
 }
+
+/// #7: Graben unter einem Baum oder Zuschütten nimmt ihm den Stand; daneben bleibt er.
+#[test]
+fn digging_under_or_burying_a_tree_removes_it() {
+    use crate::vegetation::{plan_trees, settle_tree};
+    let world = WorldGen::new(42);
+    let mut found = None;
+    'search: for chunk_z in -4..4 {
+        for chunk_x in -4..4 {
+            let column = ColumnData::sample(&world, chunk_x, chunk_z);
+            let trees = plan_trees(world.cfg.seed, world.cfg.sea_level, chunk_x, chunk_z, column.heights(), &column.biomes, &column.temperatures);
+            if let Some(tree) = trees.into_iter().find(|t| (4.0..28.0).contains(&t.position.x) && (4.0..28.0).contains(&t.position.z)) {
+                found = Some(Vec3::new((chunk_x * CHUNK_SIZE) as f32 + tree.position.x, tree.position.y, (chunk_z * CHUNK_SIZE) as f32 + tree.position.z));
+                break 'search;
+            }
+        }
+    }
+    let root = found.expect("kein Baum gefunden");
+    let density = |source: &mut Source, edits: &WorldEdits, v: IVec3| edits.get(v).map_or_else(|| source.voxel(v).density, |e| e.density);
+
+    let mut source = Source::new(&world);
+    let untouched = WorldEdits::default();
+    assert!(settle_tree(root, |v| density(&mut source, &untouched, v)).is_some(), "Baum steht ohne Änderung nicht");
+
+    let mut dug = WorldEdits::default();
+    dug.dig_sphere(&world.materials, |v| source.voxel(v), root - Vec3::Y * 1.5, 2.5, 10.0);
+    assert_eq!(settle_tree(root, |v| density(&mut source, &dug, v)), None, "Baum über gegrabenem Loch");
+
+    let mut buried = WorldEdits::default();
+    buried.place_sphere(|v| source.voxel(v), root + Vec3::Y * 1.0, 2.5, MaterialId::DIRT);
+    assert_eq!(settle_tree(root, |v| density(&mut source, &buried, v)), None, "zugeschütteter Baum");
+
+    let mut beside = WorldEdits::default();
+    beside.dig_sphere(&world.materials, |v| source.voxel(v), root + Vec3::new(8.0, -1.0, 0.0), 2.0, 10.0);
+    assert!(settle_tree(root, |v| density(&mut source, &beside, v)).is_some(), "Grube daneben nimmt den Baum weg");
+
+    let mut felled = WorldEdits::default();
+    let id = crate::vegetation::TreeId { chunk_x: 0, chunk_z: 0, cell: 5 };
+    assert!(felled.fell_tree(id));
+    assert!(!felled.fell_tree(id), "zweimal gefällt");
+    assert!(felled.is_felled(id) && !felled.is_empty());
+}
