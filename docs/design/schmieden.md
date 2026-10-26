@@ -13,17 +13,13 @@ ist ein Schwert aus gutem Material, ohne Fehler und mit stimmiger Form.
 
 ### Segmente
 
-Die Klinge besteht aus 32-64 Segmenten entlang der Länge. Pro Segment (Entwurf, wird noch
-festgelegt):
+Die Klinge besteht aus Segmenten entlang der Länge (je ≈ 1-3 cm, beim Strecken werden sie
+geteilt). Jedes Segment hat Form (Breite, Dicke, Querschnitt, Krümmung) und Gefüge
+(Kohlenstoff und Härte in Zonen über Breite und Dicke, Korn, Schichten, Fehler). Gespeichert
+werden Ursachen, Werte und Aussehen werden berechnet.
 
-- Breite, Dicke, Querschnitt (Raute, Linse, Hohlkehle, …), Fasen
-- Lage der Mittellinie (Krümmung, Verzug)
-- Kohlenstoffgehalt (hart/spröde ↔ weich/zäh)
-- Gefüge bzw. Korngröße
-- Schichten (Anzahl, Verzerrung) für das Damastmuster
-- Härte nach dem Abschrecken, Lehmauftrag, Anlasstemperatur
-- Fehler als Schweregrad 0.0-1.0 (siehe unten)
-- Temperatur (nur während der Arbeit)
+Das vollständige Modell mit allen Feldern und Regeln (Hammerschlag, Wärme, Wärmebehandlung,
+Remeshing) steht in [schmieden-datenmodell.md](schmieden-datenmodell.md).
 
 ## Ablauf
 
@@ -118,8 +114,9 @@ Wirkung hängt von Werkzeug und Timing ab.
 
 Die Klinge braucht keine Modelle oder Texturen: Das Schwert **ist** seine Daten.
 
-- **`core/` (Rust):** Simulation (Schläge, Hitze, Abschrecken) und Werte. Deterministisch, gleich
-  auf Server und Client (D-001, D-003).
+- **`core/` (Rust):** Simulation (Schläge, Hitze, Abschrecken) und Werte, in Festkomma. Der
+  Server ist autoritativ, der Client sagt voraus und bekommt nach jeder Hitze den korrigierten
+  Zustand (D-001, D-003).
 - **Godot:** baut nur Mesh und Shader-Parameter aus den Segmentdaten. Erfindet nichts dazu,
   damit Aussehen und Spielwerte nie auseinanderlaufen.
 
@@ -127,14 +124,14 @@ Die Klinge braucht keine Modelle oder Texturen: Das Schwert **ist** seine Daten.
 |---|---|
 | Klingenform | Querschnitt pro Segment, entlang der (gekrümmten) Mittellinie verbunden (Loft) |
 | Damastmuster | Shader: Schichtfunktion mit Verzerrung aus Noise, Schlägen und Verdrehungen; Seed = Schwert-ID |
-| Hamon | Lehmauftrag pro Segment → Linie und Glanzunterschied |
+| Hamon | Martensit der Zonen und Lehmgrenze pro Segment → Linie und Glanzunterschied |
 | Anlassfarben | Anlasstemperatur → Farbverlauf (stroh, braun, violett, blau) |
 | Glut | Temperatur → Schwarzkörperfarbe als Emission (gleichzeitig Gameplay) |
-| Hammerspuren | Gespeicherte Schlagpositionen → prozedurale Dellen in der Normal-Map |
+| Hammerspuren | Spurdichte, Hammerbahn und Hash der Schläge pro Segment → prozedurale Dellen in der Normal-Map |
 | Griff, Parierstange, Knauf | Parametrisch (Lathe/Extrude), Wicklung als Shader-Muster |
 | Abnutzung | Scharten, Rost als Werte pro Segment |
 
-Übertragen und gespeichert wird nur das Datenmodell (wenige hundert Bytes), nicht das Mesh.
+Übertragen und gespeichert wird nur das Datenmodell (≈ 1,8 KB für ein Langschwert), nicht das Mesh.
 Aus der Ferne reicht eine einfache Form mit Grundfarbe (LOD), Muster-Shader nur in der Nähe.
 Stil eher klar und leicht stilisiert (deutliche Fasen, kräftige Muster), damit es nicht
 "technisch" wirkt.
@@ -150,9 +147,22 @@ Stil eher klar und leicht stilisiert (deutliche Fasen, kräftige Muster), damit 
   Seltenheit.
 - Anti-Bot: Farben lesen und schwankendes Material machen stures Wiederholen per Makro wertlos.
 
+## Festgelegt
+
+- **Gemischt aktiv:** Die Grundform wird schnell geplant (Zielform skizzieren, Schläge laufen
+  halbautomatisch). Die kritischen Momente spielt man aktiv in Echtzeit: Schweißhitze, Falten,
+  Abschrecken, Anlassen. Je besser das Material, desto mehr Schritte werden aktiv.
+- **Allgemeines Modell, Schwert zuerst:** Das Datenmodell wird so geplant, dass es Klingen, Äxte,
+  Speerspitzen, Werkzeuge und Rüstungsplatten abdecken kann (Segmente entlang einer Linie bzw.
+  einer Fläche). Gebaut wird zuerst nur das Schwert.
+- **Vereinfacht reale Metallurgie:** echte Zusammenhänge (Kohlenstoff, Härte, Zähigkeit, Korn),
+  verständlich vereinfacht. Keine Magie zum Start; Spezialmaterialien aus D-013 (Magnetit,
+  Obsidian, …) bekommen plausible Eigenschaften. Magische Erze bleiben später möglich.
+
+- **Datenmodell:** variable Segmente mit Remeshing, Zonen über Breite und Dicke, Festkomma,
+  Werte fertiger Stücke eingefroren ([schmieden-datenmodell.md](schmieden-datenmodell.md)).
+
 ## Offen
 
-- Genaues Datenmodell eines Segments und was ein Hammerschlag damit macht
-- Wie aktiv das Schmieden ist (Echtzeit-Schläge, geplant oder gemischt)
-- Nur Schwerter oder ein allgemeines Modell für alle Waffen und Rüstungen
-- Wie realistisch die Metallurgie ist, ob es magische Erze gibt
+- Wertebereiche, Formeln und Log-Format (Details in [schmieden-datenmodell.md](schmieden-datenmodell.md))
+- Wie die geplante Grundform eingegeben wird (Skizze, Vorlagen, Schablonen)

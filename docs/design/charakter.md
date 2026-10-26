@@ -18,6 +18,8 @@ Schwertern aus Segmenten. Keine Modelle oder Texturen als Assets.
   Die Spanne ist begrenzt (siehe Kampf).
 - **Gesicht:** Nase, Ohren, Kinn, Brauen als parametrische Formen; Augen, Mund und Hautdetails
   im Shader.
+- **Hände:** vereinfacht, Daumen plus eine Fingergruppe (wenige Knochen). Passt zum kantigen
+  Stil; Greifposen für Hammer, Zange und Schwert werden prozedural erzeugt.
 - **Haare:** aus Kurven erzeugte Strähnen oder Haarbänder, Frisuren als Parameter.
 - **Ausrüstung:** Rüstung als Schale mit Abstand zur Körperoberfläche, passt dadurch auf jeden
   Körper und kann aus Schmiededaten entstehen ([schmieden.md](schmieden.md)).
@@ -85,5 +87,5 @@ mehr Ausdauerverbrauch und langsameres Ausweichen.
 
 ## Offen
 
-- Genaues Grundskelett (Anzahl Knochen, Hände mit Fingern für Schmieden und Greifen?)
+- Genaues Grundskelett (Anzahl Knochen). Festgelegt ist bisher die Hand (siehe Aufbau).
 - Wie schnell und wie stark sich der Körper verändert

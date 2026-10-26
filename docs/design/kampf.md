@@ -32,8 +32,8 @@ mit Multiplayer (Phase 6, D-010), das Kampf-Modell in `core/` wird aber von Anfa
 
 ## Offen
 
-- **Waffenarten:** Welche gibt es zum Start (Schwert, Axt, Speer, Dolch, …)? Gilt das
-  Segment-Modell aus dem Schmieden für alle?
+- **Waffenarten:** Welche gibt es zum Start (Schwert, Axt, Speer, Dolch, …)? Das Schmiede-Modell
+  ist allgemein geplant und deckt sie ab, gebaut wird aber zuerst nur das Schwert.
 - **Rüstung:** Wie wirken Material, Dicke und Härte gegen Schnitt, Stich und Wucht?
 - **Trefferzonen:** Welche Zone hat welche Wirkung (Schaden, Behinderung, Blutung)?
 - **Eingabe:** Wie wird die Schlagrichtung mit Maus und Controller eingegeben?

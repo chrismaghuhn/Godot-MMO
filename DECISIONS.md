@@ -388,6 +388,31 @@ möglich entstehen. Details in [docs/design/schmieden.md](docs/design/schmieden.
 werden. Prozedurale Optik braucht einen klaren Stil, sonst wirkt sie technisch. Ein Schwert wird
 als wenige hundert Bytes übertragen statt als Mesh.
 
+**Ergänzung (2026-10-26):**
+- Gemischt aktiv: Grundform geplant, kritische Momente (Schweißhitze, Falten, Abschrecken,
+  Anlassen) in Echtzeit.
+- Datenmodell allgemein geplant (Klingen, Äxte, Speerspitzen, Werkzeuge, Rüstungsplatten),
+  gebaut wird zuerst nur das Schwert.
+- Metallurgie vereinfacht real, keine Magie zum Start; magische Erze bleiben später möglich.
+
+**Ergänzung Datenmodell (2026-10-26):** Details in
+[docs/design/schmieden-datenmodell.md](docs/design/schmieden-datenmodell.md). Korrigiert zwei
+Punkte von oben:
+- Segmente haben eine eigene Länge und werden beim Strecken geteilt bzw. zusammengelegt
+  (Remeshing). Alle Bezüge laufen über die Position entlang der Klinge, nicht über den Index.
+- Gefüge in Zonen: 3 Breitenzonen (Schneide, Mitte, Rücken) plus Mantel-Lage, damit Lehm-Härten
+  und Verbundstähle wie San-Mai physikalisch funktionieren.
+- "Server und Client gleich" gilt nicht mehr: Simulation in Festkomma, der Server ist
+  autoritativ und schickt nach jeder Hitze den Zustand; Bitgleichheit braucht nur das
+  Nachspielen auf dem Server.
+- Ein Langschwert ist ≈ 1,8 KB statt "wenige hundert Bytes".
+- Werkstücke speichern eine Formel-Version, fertige Stücke frieren ihre Werte ein.
+- Volles Aktions-Log nur während der Arbeit, danach Snapshots pro Hitze.
+
+Alternativen: feste Segmentlänge (widerspricht dem Strecken), ein Gefügewert pro Segment
+(Lehm-Härten nur kosmetisch), f32 mit Bitgleichheit auf allen Clients (dauerhafte Fehlerquelle,
+bei server-autoritativem Modell unnötig).
+
 ## D-016: Charakter prozedural, First-Person mit echtem Körper
 - Datum: 2026-10-26
 - Status: angenommen
@@ -424,3 +449,7 @@ kämpft. Wie beim Schmieden (D-015) sollen so wenig Assets wie möglich entstehe
 **Folgen:** Ohne Klettern müssen Steilhänge über Wege, Umwege oder Graben/Bauen überwindbar
 sein. Nahkampf im Multiplayer braucht Lag-Kompensation auf dem Server (Phase 6). Clipping und
 Kamera-Stabilisierung sind bei First-Person mit echtem Körper eigene Aufgaben.
+
+**Ergänzung (2026-10-26):** Vereinfachte Hände mit Daumen plus einer Fingergruppe (wenige
+Knochen); Greifposen werden prozedural erzeugt. Volle Finger wären in First-Person schöner, aber
+deutlich mehr Animationsaufwand.
