@@ -144,6 +144,18 @@ impl DensityChunk {
         self.values[(iz * n + iy) * n + ix]
     }
 
+    /// Setzt die Dichte an lokaler Koordinate `-1..=CHUNK_SIZE` je Achse.
+    /// Nur innerhalb des Cores (Untergrund), damit Chunks nicht beliebig verändert werden.
+    #[cfg_attr(not(feature = "underground"), allow(dead_code))]
+    #[inline]
+    pub(crate) fn set(&mut self, x: i32, y: i32, z: i32, value: f32) {
+        let n = DENSITY_SAMPLES;
+        let ix = (x - SAMPLE_MIN) as usize;
+        let iy = (y - SAMPLE_MIN) as usize;
+        let iz = (z - SAMPLE_MIN) as usize;
+        self.values[(iz * n + iy) * n + ix] = value;
+    }
+
     /// Weltposition der lokalen Koordinate (0, 0, 0).
     pub fn origin(&self) -> IVec3 {
         self.position * CHUNK_SIZE

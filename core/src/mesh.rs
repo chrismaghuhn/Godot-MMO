@@ -8,7 +8,14 @@
 //! Rand-Samples, identisch zu den Zellen `CHUNK_SIZE - 1` des Nachbarn.
 
 use crate::volume::{ColumnData, DensityChunk, CHUNK_SIZE, SAMPLE_MIN};
-use crate::world::WorldGen;
+use crate::world::{WorldGen, smoothstep};
+
+/// Farbe von Fels unter der Oberfläche (sRGB).
+const ROCK_COLOR: [u8; 3] = [112, 106, 100];
+
+fn blend_rgb(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
+    std::array::from_fn(|i| (a[i] as f32 + (b[i] as f32 - a[i] as f32) * t).round() as u8)
+}
 
 /// Zellen pro Achse: lokale Zellkoordinaten `-1..CHUNK_SIZE`.
 const CELLS: usize = CHUNK_SIZE as usize + 1;
@@ -30,7 +37,8 @@ impl ChunkMesh {
         self.indices.is_empty()
     }
 
-    /// Mesh inklusive Biom-Farben.
+    /// Mesh inklusive Farben: Biom-Farbe an der Oberfläche, Fels darunter
+    /// (Höhlenwände, Überhänge). Nutzt nur öffentliche Daten (Höhe der Spalte).
     pub fn build(world: &WorldGen, column: &ColumnData, chunk: &DensityChunk) -> Self {
         let mut mesh = surface_nets(chunk);
         let origin_y = chunk.origin().y as f32;
@@ -40,8 +48,11 @@ impl ChunkMesh {
             .map(|&[x, y, z]| {
                 let local_x = (x.round() as i32).clamp(SAMPLE_MIN, CHUNK_SIZE + 1);
                 let local_z = (z.round() as i32).clamp(SAMPLE_MIN, CHUNK_SIZE + 1);
+                let world_y = origin_y + y;
                 let biome = column.biome(local_x, local_z);
-                world.apply_altitude(world.biome_color(biome), origin_y + y)
+                let surface = world.apply_altitude(world.biome_color(biome), world_y);
+                let depth = column.height(local_x, local_z) - world_y;
+                blend_rgb(surface, ROCK_COLOR, smoothstep(1.5, 4.0, depth))
             })
             .collect();
         mesh

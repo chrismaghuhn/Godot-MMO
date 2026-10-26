@@ -20,6 +20,11 @@ impl Layer {
     pub fn get(&self, x: f32, z: f32) -> f32 {
         self.noise.get_noise_2d(x, z)
     }
+
+    #[inline]
+    pub fn get3(&self, x: f32, y: f32, z: f32) -> f32 {
+        self.noise.get_noise_3d(x, y, z)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

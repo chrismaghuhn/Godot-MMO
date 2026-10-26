@@ -52,7 +52,7 @@ fn main() {
         world.cfg.view_radius = radius;
     }
     let (secret_seed, dev_seed) = secret_seed_from_env(seed);
-    let underground = Underground::new(secret_seed);
+    let underground = Underground::new(secret_seed, &world.cfg);
     let window_width = env_parse("TERRAFORGE_WIN_W").unwrap_or(1600);
     let window_height = env_parse("TERRAFORGE_WIN_H").unwrap_or(900);
 
