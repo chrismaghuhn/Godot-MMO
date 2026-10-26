@@ -154,8 +154,9 @@ fn find_spawn(world: &WorldGen) -> Vec3 {
     let sea = world.cfg.sea_level;
     let mut best = Vec3::new(0.0, sea + 2.0, 0.0);
     let mut best_score = f32::INFINITY;
-    for ring in 0..60 {
-        let radius = ring as f32 * 12.0;
+    // Bis 6 km Umkreis: Seit #50 sind Meere und Landmassen mehrere Kilometer groß.
+    for ring in 0..150 {
+        let radius = ring as f32 * 40.0;
         for step in 0..24 {
             let angle = step as f32 / 24.0 * TAU;
             let x = radius * angle.cos();

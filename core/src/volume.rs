@@ -40,6 +40,8 @@ pub struct ColumnData {
     geology: Vec<ColumnGeology>,
     /// Fluss-Faktor 0..1 pro Spalte (öffentlich, Flüsse sind sichtbar), Indizierung wie `heights`.
     rivers: Vec<f32>,
+    /// Oberflächenfarbe (sRGB) mit weichem Übergang an Regionsgrenzen (#50).
+    colors: Vec<[u8; 3]>,
     min_height: f32,
     max_height: f32,
 }
@@ -63,6 +65,7 @@ impl ColumnData {
             temperatures: [[0.0; COLUMN_SAMPLES]; COLUMN_SAMPLES],
             geology: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             rivers: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
+            colors: Vec::with_capacity(COLUMN_SAMPLES * COLUMN_SAMPLES),
             min_height: f32::INFINITY,
             max_height: f32::NEG_INFINITY,
         };
@@ -80,9 +83,11 @@ impl ColumnData {
                 let (world_x, world_z) = world_pos(ix, iz);
                 let sample = world.sample(world_x, world_z);
                 column.heights[iz][ix] = sample.height;
-                column.biomes[iz][ix] = world.biome_at(&sample);
+                let biome = world.biome_at(&sample);
+                column.biomes[iz][ix] = biome;
                 column.temperatures[iz][ix] = sample.temperature;
                 column.rivers.push(sample.river);
+                column.colors.push(world.surface_color(&sample, biome));
                 samples.push(sample);
             }
         }
@@ -136,6 +141,12 @@ impl ColumnData {
     #[inline]
     pub fn river(&self, local_x: i32, local_z: i32) -> f32 {
         self.rivers[(local_z - SAMPLE_MIN) as usize * COLUMN_SAMPLES + (local_x - SAMPLE_MIN) as usize]
+    }
+
+    /// Oberflächenfarbe (sRGB, ohne Höhen-Schnee) an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).
+    #[inline]
+    pub fn surface_color(&self, local_x: i32, local_z: i32) -> [u8; 3] {
+        self.colors[(local_z - SAMPLE_MIN) as usize * COLUMN_SAMPLES + (local_x - SAMPLE_MIN) as usize]
     }
 
     /// Biom an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).

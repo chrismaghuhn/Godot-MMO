@@ -35,18 +35,11 @@ fn effective(world: &WorldGen, underground: &Underground, column: &ColumnData, c
 /// seiner Zelle ab, also ist die sichtbare Oberfläche dann unabhängig vom Seed.
 #[test]
 fn surface_cells_unchanged_without_entrance() {
-    // Zusätzlich Blöcke mit den steilsten Hängen von Seed 42. Das Review fand den Fehler
-    // der rein senkrechten Tiefe an einem steilen Flussufer (Chunk 0,1,-40); seit #35 sind
-    // die Ufer flach, die steilsten Stellen liegen jetzt an Berghängen.
-    let mut columns: Vec<(i32, i32)> = COLUMNS.to_vec();
-    for (center_x, center_z) in [(70, -22), (148, -82), (-15, 27)] {
-        for chunk_z in center_z - 1..=center_z + 1 {
-            for chunk_x in center_x - 1..=center_x + 1 {
-                columns.push((chunk_x, chunk_z));
-            }
-        }
-    }
-    let (mut cells, mut steep_cells) = (0usize, 0usize);
+    // Den steilen Fall (Zelle an Luft, Ecke senkrecht tiefer als die Schale) prüft
+    // `shell_protects_a_synthetic_cliff_against_caves_everywhere` unabhängig vom Gelände: Seit
+    // den flachen Flussufern (#35) gibt es in der echten Welt kaum noch senkrechte Wände.
+    let columns: Vec<(i32, i32)> = COLUMNS.to_vec();
+    let mut cells = 0usize;
     for secret in [1u64, 0xFFFF_0000_1234] {
         let (world, underground) = setup(secret);
         let sea = world.cfg.sea_level;
@@ -77,11 +70,6 @@ fn surface_cells_unchanged_without_entrance() {
                                 continue;
                             }
                             cells += 1;
-                            // Steiler Fall: eine Ecke liegt senkrecht tiefer als die Schale, die Zelle
-                            // berührt trotzdem Luft. Nur nach senkrechter Tiefe würde hier gegraben.
-                            if corners.iter().any(|&(cx, cy, cz)| column.height(cx, cz) - (origin.y + cy) as f32 > SURFACE_SHELL) {
-                                steep_cells += 1;
-                            }
                             for (cx, cy, cz) in corners {
                                 assert_eq!(
                                     public.get(cx, cy, cz).to_bits(),
@@ -101,8 +89,6 @@ fn surface_cells_unchanged_without_entrance() {
         }
     }
     assert!(cells > 50_000, "zu wenige Oberflächen-Zellen geprüft: {cells}");
-    eprintln!("Oberflächen-Zellen: {cells}, davon steil: {steep_cells}");
-    assert!(steep_cells > 100, "Steilhänge nicht abgedeckt: {steep_cells}");
 }
 
 /// Anteil Hohlraum unterhalb der Schale. Bewusst grobe Grenzen: fängt "gar keine Höhlen"
@@ -292,8 +278,8 @@ fn surface_materials_unchanged_even_at_entrances() {
     let world = WorldGen::new(42);
     let underground = Underground::new(SecretSeed::insecure_dev_seed(42), &world.cfg);
     let sea = world.cfg.sea_level;
-    // Große Eingänge aus einer Messung mit diesem Seed (siehe #4/#45).
-    let spots = [(-1435.9, -1254.7), (-648.2, 979.9), (581.3, 1343.3), (-1585.2, 686.4), (33.9, -1042.3)];
+    // Große Eingänge aus einer Messung mit diesem Seed (Welt nach #50).
+    let spots = [(-363.9, -1728.4), (30.8, -1039.5), (1991.9, 1877.1), (1367.4, -1255.2), (-1287.4, -695.7)];
     let (mut cells, mut entrance_cells, mut opened_cells) = (0usize, 0usize, 0usize);
     for (x, z) in spots {
         let (chunk_x, chunk_z) = ((x / CHUNK_SIZE as f32).floor() as i32, (z / CHUNK_SIZE as f32).floor() as i32);
@@ -342,4 +328,56 @@ fn surface_materials_unchanged_even_at_entrances() {
     assert!(cells > 10_000, "zu wenige Oberflächen-Zellen: {cells}");
     assert!(entrance_cells > 100, "Eingänge nicht abgedeckt: {entrance_cells}");
     assert!(opened_cells > 50, "keine echten Höhlenöffnungen im Testgebiet: {opened_cells}");
+}
+
+/// Unabhängig vom Gelände: künstliche senkrechte Klippe (unter dem Meeresspiegel, also ohne
+/// Eingänge) und ein Höhlengitter, das überall Höhle meldet. Die Schutz-Schale muss trotzdem
+/// jede Zelle an öffentlicher Luft unverändert lassen. Fängt z. B. die rein senkrechte Tiefe,
+/// ohne darauf angewiesen zu sein, dass die echte Welt passende Steilhänge mit Höhlen hat.
+#[test]
+fn shell_protects_a_synthetic_cliff_against_caves_everywhere() {
+    use super::caves::{CaveGrid, ShellHeights};
+    use super::grid::CoarseGrid;
+
+    let world = WorldGen::new(42);
+    let underground = Underground::new(SecretSeed::from_u64(1), &world.cfg);
+    let mut column = ColumnData::sample(&world, 0, 0);
+    // Klippe in x-Richtung: oben 26 m, unten 6 m, also 20 m senkrecht, komplett unter dem
+    // Meeresspiegel (32 m), damit `entrance` überall 0 ist.
+    for row in column.heights.iter_mut() {
+        for (ix, height) in row.iter_mut().enumerate() {
+            *height = if ix < 17 { 26.0 } else { 6.0 };
+        }
+    }
+    let grid = CaveGrid(CoarseGrid::build(0, 0, 0, |_, _| (), |_, _, _, _| -20.0));
+    let shell = ShellHeights::new(&world, &column);
+    let public = DensityChunk::from_column(&column, 0);
+    let mut full = DensityChunk::from_column(&column, 0);
+    let carved = caves::carve(&underground.caves, &grid, &column, &shell, &mut full, world.cfg.sea_level);
+    assert!(carved, "Gitter meldet überall Höhle, es muss etwas ausgehöhlt sein");
+
+    let mut checked = 0;
+    // Nur das Innere: Die Randreihe -2 von ShellHeights kommt aus der echten Welt.
+    for z in 2..CHUNK_SIZE - 2 {
+        for y in SAMPLE_MIN..CHUNK_SIZE {
+            for x in 2..CHUNK_SIZE - 2 {
+                let corners = [
+                    (x, y, z), (x + 1, y, z), (x, y + 1, z), (x + 1, y + 1, z),
+                    (x, y, z + 1), (x + 1, y, z + 1), (x, y + 1, z + 1), (x + 1, y + 1, z + 1),
+                ];
+                if !corners.iter().any(|&(a, b, c)| public.get(a, b, c) <= 0.0) {
+                    continue;
+                }
+                checked += 1;
+                for (a, b, c) in corners {
+                    assert_eq!(
+                        public.get(a, b, c).to_bits(),
+                        full.get(a, b, c).to_bits(),
+                        "Klippen-Zelle {x},{y},{z} verändert (Ecke {a},{b},{c})"
+                    );
+                }
+            }
+        }
+    }
+    assert!(checked > 500, "zu wenige Oberflächen-Zellen: {checked}");
 }

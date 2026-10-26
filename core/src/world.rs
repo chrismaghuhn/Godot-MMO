@@ -2,6 +2,7 @@ use crate::biome::{BiomeRegistry, FamilyKind};
 use crate::geology::Geology;
 use crate::material::MaterialRegistry;
 use crate::noise::NoiseBank;
+use crate::regions::{RegionId, RegionMap, RegionSample, RegionTheme};
 
 /// Wassertiefe in der Flussmitte.
 const RIVER_DEPTH: f32 = 1.25;
@@ -43,6 +44,8 @@ pub struct ColumnSample {
     pub river: f32,
     /// Wie viele Meter das Flussufer das Gelände hier abgesenkt hat (#35).
     pub river_cut: f32,
+    /// Region (#50) und Übergang zur Nachbarregion.
+    pub region: RegionSample,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +59,7 @@ pub struct WorldGen {
     pub biomes: BiomeRegistry,
     pub materials: MaterialRegistry,
     pub geology: Geology,
+    pub regions: RegionMap,
     noise: NoiseBank,
 }
 
@@ -70,6 +74,7 @@ impl WorldGen {
             geology: Geology::new(seed, cfg.sea_level),
             biomes: BiomeRegistry::load(),
             materials: MaterialRegistry::load(),
+            regions: RegionMap::new(seed),
             noise: NoiseBank::new(seed),
         }
     }
@@ -100,8 +105,9 @@ impl WorldGen {
         height += raw.detail * hill_amp;
         height += continental * 5.0;
 
+        // Flussband schmaler als vorher, weil die Fluss-Noise seit #50 großräumiger ist.
         let lowland = smoothstep(sea + 55.0, sea + 3.0, height) * smoothstep(sea - 1.0, sea + 0.5, height);
-        let river_band = 1.0 - smoothstep(0.0, 0.030, raw.river.abs());
+        let river_band = 1.0 - smoothstep(0.0, 0.020, raw.river.abs());
         let river = river_band * lowland;
         let uncarved = height;
         if lowland > 0.0 {
@@ -112,25 +118,27 @@ impl WorldGen {
             height += (smooth_min(height, bank, BANK_BLEND) - height) * lowland;
         }
 
+        // Regionen (#50): Klima-Tendenz und Thema, an Grenzen gemischt.
+        let region = self.regions.sample(x, z);
+        let (temperature_bias, humidity_bias) = self.regions.climate_bias(&region);
+
         // Klima nach dem Gelände ohne Flussufer, damit Flüsse die Biome nicht verschieben.
         let altitude = (uncarved - sea).max(0.0);
-        let temperature =
-            (raw.temperature * 1.05 + raw.realm * 0.30 + 0.02 - altitude * 0.0035).clamp(-1.0, 1.0);
+        let temperature = (raw.temperature * 1.05 + raw.realm * 0.30 + 0.02 + temperature_bias
+            - altitude * 0.0035)
+            .clamp(-1.0, 1.0);
         let humidity = (raw.humidity * 1.35 - raw.realm * 0.25
+            + humidity_bias
             + 0.30 * smoothstep(70.0, 0.0, uncarved - sea))
         .clamp(-1.0, 1.0);
 
-        let volcanic = smoothstep(
-            0.40,
-            0.72,
-            raw.volcanic * 0.55 + mountain * 0.35 + raw.realm * 0.08,
-        );
-        let crystal = smoothstep(0.45, 0.80, raw.crystal + raw.realm * 0.08);
-        let fungal = smoothstep(
-            0.38,
-            0.70,
-            raw.fungal * 0.55 + raw.humidity * 0.45 + raw.realm * 0.08,
-        );
+        // Spezial-Biome kommen aus dem Thema der Region (#49, #50). Im Inneren (Gewicht ≈ 1) liegt
+        // der Wert immer über der Biom-Schwelle (0,6), die lokale Noise formt nur den Rand der
+        // Zone; an Grenzen zählt das Thema höchstens halb, dort entstehen keine Spezial-Biome.
+        let shape = |value: f32| smoothstep(-0.4, 0.5, value);
+        let volcanic = self.regions.theme_weight(&region, RegionTheme::Volcanic) * (0.62 + 0.38 * shape(raw.volcanic));
+        let crystal = self.regions.theme_weight(&region, RegionTheme::Crystal) * (0.62 + 0.38 * shape(raw.crystal));
+        let fungal = self.regions.theme_weight(&region, RegionTheme::Fungal) * (0.62 + 0.38 * shape(raw.fungal));
 
         ColumnSample {
             height,
@@ -145,6 +153,7 @@ impl WorldGen {
             fungal,
             river,
             river_cut: uncarved - height,
+            region,
         }
     }
 
@@ -168,6 +177,21 @@ impl WorldGen {
 
     pub fn biome_color(&self, biome: BiomeRef) -> [u8; 3] {
         self.biomes.family(biome.kind).variants[biome.variant].color
+    }
+
+    /// Oberflächenfarbe mit weichem Übergang an Regionsgrenzen: Farbe der eigenen Variante,
+    /// gemischt mit der Variante, die die Nachbarregion für dieselbe Familie hätte.
+    pub fn surface_color(&self, sample: &ColumnSample, biome: BiomeRef) -> [u8; 3] {
+        let own = self.biome_color(biome);
+        let weight = sample.region.neighbour_weight;
+        if weight <= 0.0 {
+            return own;
+        }
+        let other = self.biome_color(BiomeRef {
+            kind: biome.kind,
+            variant: self.variant_in_region(biome.kind, sample, sample.region.neighbour),
+        });
+        std::array::from_fn(|i| (own[i] as f32 * (1.0 - weight) + other[i] as f32 * weight).round() as u8)
     }
 
     pub fn apply_altitude(&self, color: [u8; 3], height: f32) -> [u8; 3] {
@@ -198,10 +222,11 @@ impl WorldGen {
         if sample.volcanic > 0.58 && sample.height > sea + 5.0 {
             return FamilyKind::Volcanic;
         }
-        if sample.crystal > 0.62 && sample.mountain > 0.15 {
+        // Kristall- und Pilz-Regionen auf jedem Gelände (früher nur Berge bzw. feucht; #49).
+        if sample.crystal > 0.6 {
             return FamilyKind::Crystal;
         }
-        if sample.fungal > 0.58 && sample.humidity > 0.05 {
+        if sample.fungal > 0.6 {
             return FamilyKind::FungiFlora;
         }
         if sample.mountain > 0.58 && sample.height > sea + 68.0 {
@@ -229,12 +254,17 @@ impl WorldGen {
     }
 
     fn pick_variant(&self, kind: FamilyKind, sample: &ColumnSample) -> usize {
-        let count = self.biomes.family(kind).variants.len();
-        if count == 0 {
+        self.variant_in_region(kind, sample, sample.region.id)
+    }
+
+    /// Variante einer Familie in einer Region: fest pro Region (#50). Unter Wasser zusätzlich
+    /// nach Tiefe gruppiert (flach, mittel, tief).
+    fn variant_in_region(&self, kind: FamilyKind, sample: &ColumnSample, region: RegionId) -> usize {
+        let variants = &self.biomes.family(kind).variants;
+        if variants.is_empty() {
             return 0;
         }
-        let wobble = (sample.weirdness + (sample.realm - 0.5) * 0.55).rem_euclid(1.0);
-
+        let purpose = kind as u64;
         if kind == FamilyKind::Underwater {
             let depth = (self.cfg.sea_level - sample.height).max(0.0);
             let group = if depth < 12.0 {
@@ -244,34 +274,13 @@ impl WorldGen {
             } else {
                 2
             };
-            let variants = &self.biomes.family(kind).variants;
-            let mut matching = 0usize;
-            for variant in variants {
-                if variant.underwater_group == group {
-                    matching += 1;
-                }
+            let matching: Vec<usize> = (0..variants.len()).filter(|&i| variants[i].underwater_group == group).collect();
+            if !matching.is_empty() {
+                return matching[self.regions.pick(region, purpose * 4 + group as u64, matching.len())];
             }
-            if matching > 0 {
-                let target = slot(wobble, matching);
-                let mut seen = 0usize;
-                for (index, variant) in variants.iter().enumerate() {
-                    if variant.underwater_group == group {
-                        if seen == target {
-                            return index;
-                        }
-                        seen += 1;
-                    }
-                }
-            }
-            return slot(wobble, count);
         }
-
-        slot(wobble, count)
+        self.regions.pick(region, purpose, variants.len())
     }
-}
-
-fn slot(t: f32, count: usize) -> usize {
-    ((t.clamp(0.0, 0.999_999) * count as f32) as usize).min(count - 1)
 }
 
 /// Minimum mit weichem Übergang der Breite `k` (polynomielles smooth-min).
@@ -288,6 +297,7 @@ pub fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{HashMap, VecDeque};
 
     /// Landproben auf einem groben Raster (Seed 42).
     fn land_samples(world: &WorldGen, area: f32, steps: usize) -> Vec<(f32, f32, ColumnSample)> {
@@ -307,15 +317,17 @@ mod tests {
 
     #[test]
     fn crystal_biomes_exist_but_stay_rare() {
-        // #49: Vorher lag der Kristallwert nie über 0.4, die Familie kam nie vor.
+        // #49: Vorher lag der Kristallwert nie über 0.4, die Familie kam nie vor. Seit #50 gibt es
+        // Kristall-Regionen (≈ 6 % der Regionen, mehrere km groß); der Anteil schwankt deshalb mit
+        // dem Ausschnitt und wird über 40×40 km gemessen.
         let world = WorldGen::new(42);
-        let land = land_samples(&world, 20_000.0, 160);
+        let land = land_samples(&world, 40_000.0, 200);
         let crystal = land
             .iter()
             .filter(|(_, _, sample)| world.biome_at(sample).kind == FamilyKind::Crystal)
             .count();
         let share = crystal as f64 / land.len() as f64;
-        assert!((0.005..0.05).contains(&share), "Kristall-Anteil {share:.4}");
+        assert!((0.01..0.12).contains(&share), "Kristall-Anteil {share:.4}");
     }
 
     #[test]
@@ -342,5 +354,130 @@ mod tests {
         assert!(banks > 100, "zu wenige Uferproben: {banks}");
         let share = steep as f64 / banks as f64;
         assert!(share < 0.15, "steile Ufer: {share:.3} von {banks}");
+    }
+
+    /// #49: Spezial-Biome kommen vor, aber nur in Regionen mit passendem Thema.
+    #[test]
+    fn special_biomes_exist_only_in_themed_regions() {
+        let world = WorldGen::new(42);
+        let mut counts: HashMap<FamilyKind, usize> = HashMap::new();
+        for z in (-20000..20000).step_by(97) {
+            for x in (-20000..20000).step_by(97) {
+                let sample = world.sample(x as f32, z as f32);
+                let kind = world.biome_at(&sample).kind;
+                let theme = match kind {
+                    FamilyKind::Volcanic => RegionTheme::Volcanic,
+                    FamilyKind::Crystal => RegionTheme::Crystal,
+                    FamilyKind::FungiFlora => RegionTheme::Fungal,
+                    _ => continue,
+                };
+                *counts.entry(kind).or_default() += 1;
+                assert!(
+                    world.regions.theme_weight(&sample.region, theme) > 0.5,
+                    "{kind:?} außerhalb einer passenden Region bei {x},{z}"
+                );
+            }
+        }
+        for kind in [FamilyKind::Volcanic, FamilyKind::Crystal, FamilyKind::FungiFlora] {
+            assert!(counts.get(&kind).copied().unwrap_or(0) > 200, "{kind:?} zu selten: {counts:?}");
+        }
+    }
+
+    /// #50: Im Inneren einer Region hat jede Familie genau eine Variante.
+    #[test]
+    fn one_variant_per_family_inside_a_region() {
+        let world = WorldGen::new(42);
+        let mut seen: HashMap<(RegionId, FamilyKind), usize> = HashMap::new();
+        let mut checked = 0;
+        for z in (-12000..12000).step_by(131) {
+            for x in (-12000..12000).step_by(131) {
+                let sample = world.sample(x as f32, z as f32);
+                if sample.region.neighbour_weight > 0.0 {
+                    continue;
+                }
+                let biome = world.biome_at(&sample);
+                if biome.kind == FamilyKind::Underwater {
+                    continue; // unter Wasser zusätzlich nach Tiefe gruppiert
+                }
+                let variant = *seen.entry((sample.region.id, biome.kind)).or_insert(biome.variant);
+                assert_eq!(variant, biome.variant, "zwei Varianten von {:?} in Region {:?}", biome.kind, sample.region.id);
+                checked += 1;
+            }
+        }
+        assert!(checked > 5000);
+    }
+
+    /// #50: Varianten-Flächen sind groß. "Typische Größe" = flächengewichteter Mittelwert von
+    /// sqrt(Fläche). Vor #50 waren es ≈ 0,1 km (Flickenteppich), danach ≈ 1,5-2 km.
+    #[test]
+    fn variant_patches_are_large() {
+        let world = WorldGen::new(42);
+        let (half, step) = (6000, 32);
+        let n = (2 * half / step) as usize;
+        let mut label = vec![None; n * n];
+        for j in 0..n {
+            for i in 0..n {
+                let sample = world.sample((-half + i as i32 * step) as f32, (-half + j as i32 * step) as f32);
+                if sample.height >= world.cfg.sea_level {
+                    label[j * n + i] = Some(world.biome_at(&sample));
+                }
+            }
+        }
+        let mut seen = vec![false; n * n];
+        let (mut weighted, mut total) = (0.0f64, 0.0f64);
+        for start in 0..n * n {
+            let Some(own) = label[start] else { continue };
+            if seen[start] {
+                continue;
+            }
+            let mut queue = VecDeque::from([start]);
+            seen[start] = true;
+            let mut cells = 0usize;
+            while let Some(p) = queue.pop_front() {
+                cells += 1;
+                let (x, y) = (p % n, p / n);
+                let neighbours = [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)];
+                for (nx, ny) in neighbours {
+                    if nx < n && ny < n && !seen[ny * n + nx] && label[ny * n + nx] == Some(own) {
+                        seen[ny * n + nx] = true;
+                        queue.push_back(ny * n + nx);
+                    }
+                }
+            }
+            let area = cells as f64 * (step * step) as f64;
+            weighted += area * area.sqrt();
+            total += area;
+        }
+        let typical_km = weighted / total / 1000.0;
+        assert!(typical_km > 1.0, "Varianten-Flächen nur {typical_km:.2} km groß");
+    }
+
+    /// Weicher Übergang: Auf der Regionsgrenze ist die Farbe das Mittel beider Varianten.
+    #[test]
+    fn surface_colour_blends_at_region_borders() {
+        let world = WorldGen::new(42);
+        let mut blended = 0;
+        let mut x = -15000.0;
+        while x < 15000.0 {
+            x += 7.0;
+            let sample = world.sample(x, 777.0);
+            let biome = world.biome_at(&sample);
+            let color = world.surface_color(&sample, biome);
+            if sample.region.neighbour_weight == 0.0 {
+                assert_eq!(color, world.biome_color(biome), "im Inneren keine Mischung");
+            } else if sample.region.neighbour_weight > 0.49 {
+                let other = world.biome_color(BiomeRef {
+                    kind: biome.kind,
+                    variant: world.variant_in_region(biome.kind, &sample, sample.region.neighbour),
+                });
+                let own = world.biome_color(biome);
+                for i in 0..3 {
+                    let mean = (own[i] as f32 + other[i] as f32) / 2.0;
+                    assert!((color[i] as f32 - mean).abs() <= 2.0, "keine Mischung an der Grenze");
+                }
+                blended += 1;
+            }
+        }
+        assert!(blended > 0, "keine Grenze auf der Teststrecke");
     }
 }

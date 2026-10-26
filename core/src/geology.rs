@@ -212,11 +212,12 @@ mod tests {
     use crate::volume::{CHUNK_SIZE, ColumnData, DensityChunk, SAMPLE_MIN};
     use crate::world::WorldGen;
 
-    /// Spalten über einen größeren Bereich, damit alle Biome und Gesteine vorkommen.
+    /// Spalten über einen großen Bereich (±13 km), damit alle Biome und Gesteine vorkommen;
+    /// Regionen sind seit #50 mehrere Kilometer groß.
     fn sample_columns(world: &WorldGen) -> Vec<ColumnData> {
         let mut columns = Vec::new();
-        for chunk_z in (-60..60).step_by(9) {
-            for chunk_x in (-60..60).step_by(9) {
+        for chunk_z in (-400..400).step_by(53) {
+            for chunk_x in (-400..400).step_by(53) {
                 columns.push(ColumnData::sample(world, chunk_x, chunk_z));
             }
         }

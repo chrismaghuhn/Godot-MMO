@@ -51,8 +51,7 @@ impl ChunkMesh {
                 let local_x = (x.round() as i32).clamp(SAMPLE_MIN, CHUNK_SIZE + 1);
                 let local_z = (z.round() as i32).clamp(SAMPLE_MIN, CHUNK_SIZE + 1);
                 let world_y = origin_y + y;
-                let biome = column.biome(local_x, local_z);
-                let surface = world.apply_altitude(world.biome_color(biome), world_y);
+                let surface = world.apply_altitude(column.surface_color(local_x, local_z), world_y);
                 let depth = column.height(local_x, local_z) - world_y;
                 let below = world.materials.display_color(material);
                 blend_rgb(surface, below, smoothstep(1.5, 4.0, depth))

@@ -67,26 +67,26 @@ impl NoiseBank {
             Layer::new(seed.wrapping_add(offset), frequency, octaves)
         };
         Self {
-            continental: layer(11, 0.00055, 4),
-            erosion: layer(23, 0.00110, 3),
-            ridges: layer(37, 0.00160, 4),
+            continental: layer(11, 0.00018, 5),
+            erosion: layer(23, 0.00060, 3),
+            ridges: layer(37, 0.00110, 4),
             detail: layer(41, 0.01200, 3),
-            temperature: layer(53, 0.00042, 3),
-            humidity: layer(67, 0.00055, 3),
+            temperature: layer(53, 0.00015, 3),
+            humidity: layer(67, 0.00019, 3),
             weirdness: layer(71, 0.00070, 3),
-            realm: layer(89, 0.00021, 2),
+            realm: layer(89, 0.00008, 2),
             volcanic: layer(97, 0.00090, 3),
             crystal: layer(101, 0.00110, 3),
             fungal: layer(103, 0.00130, 3),
-            river: layer(113, 0.00190, 2),
-            warp_a: layer(107, 0.00110, 3),
-            warp_b: layer(109, 0.00110, 3),
+            river: layer(113, 0.00090, 2),
+            warp_a: layer(107, 0.00050, 3),
+            warp_b: layer(109, 0.00050, 3),
         }
     }
 
     pub fn sample(&self, x: f32, z: f32) -> RawSample {
-        let warp_x = self.warp_a.get(x + 31.7, z - 17.3) * 80.0;
-        let warp_z = self.warp_b.get(x - 53.1, z + 91.7) * 80.0;
+        let warp_x = self.warp_a.get(x + 31.7, z - 17.3) * 220.0;
+        let warp_z = self.warp_b.get(x - 53.1, z + 91.7) * 220.0;
         let cx = x + warp_x;
         let cz = z + warp_z;
 
