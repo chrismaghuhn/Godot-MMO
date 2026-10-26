@@ -6,8 +6,10 @@
 //! - ein **Thema**: normal, Vulkan, Kristall oder Pilz.
 //!
 //! Regionen sind Voronoi-Zellen auf verzerrten Koordinaten (organische Grenzen). An Grenzen
-//! werden Themen, Klima und Farben über `BORDER_BLEND` Meter gemischt; genau auf der Grenze
-//! zählen beide Regionen gleich, dadurch ist alles stetig.
+//! werden Themen, Klima und Farben über `BORDER_BLEND` Meter gemischt. Jede nahe Region bekommt
+//! ein stetiges Gewicht, das mit dem Abstand zur nächsten Region abnimmt; die Gewichte werden
+//! normiert. Auf einer Grenze zweier Regionen ergibt das 50/50, an Dreiländerecken mischen sich
+//! alle drei – ohne Sprung (Review-Fund zu #50: mit nur zwei Regionen sprang der Wert dort).
 //!
 //! Alles aus dem öffentlichen Seed: Regionen sind sichtbar und dürfen vom Client erzeugt werden.
 
@@ -31,22 +33,33 @@ pub enum RegionTheme {
     Fungal,
 }
 
-/// Region an einem Punkt und wie stark die Nachbarregion dort mitzählt.
+/// Kandidaten der 3×3-Suche; so viele Regionen kann ein Punkt höchstens mischen.
+const CANDIDATES: usize = 9;
+
+/// Region an einem Punkt und alle Regionen, die dort mitzählen.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RegionSample {
     /// Region, zu der der Punkt gehört (nächster Mittelpunkt).
     pub id: RegionId,
-    /// Nächste andere Region (für Übergänge).
-    pub neighbour: RegionId,
-    /// Gewicht der Nachbarregion: 0,5 genau auf der Grenze, 0 ab `BORDER_BLEND` im Inneren.
-    pub neighbour_weight: f32,
+    /// Mitzählende Regionen mit normierten Gewichten (Summe 1), die eigene zuerst.
+    weights: [(RegionId, f32); CANDIDATES],
+    count: u8,
 }
 
 impl RegionSample {
-    /// Gewichteter Mittelwert einer Eigenschaft beider Regionen (stetig über die Grenze).
+    /// Alle mitzählenden Regionen mit Gewicht; im Inneren nur die eigene mit 1,0.
+    pub fn regions(&self) -> &[(RegionId, f32)] {
+        &self.weights[..self.count as usize]
+    }
+
+    /// Anteil, den fremde Regionen an diesem Punkt haben (0 im Inneren, 0,5 auf einer Grenze).
+    pub fn foreign_weight(&self) -> f32 {
+        1.0 - self.weights[0].1
+    }
+
+    /// Gewichteter Mittelwert einer Eigenschaft über alle mitzählenden Regionen (stetig).
     pub fn blend(&self, mut value: impl FnMut(RegionId) -> f32) -> f32 {
-        let w = self.neighbour_weight;
-        value(self.id) * (1.0 - w) + value(self.neighbour) * w
+        self.regions().iter().map(|&(id, weight)| value(id) * weight).sum()
     }
 }
 
@@ -99,27 +112,38 @@ impl RegionMap {
         let wx = x + self.warp_x.get(x, z) * WARP;
         let wz = z + self.warp_z.get(x, z) * WARP;
         let base = ((wx / REGION_SIZE).floor() as i32, (wz / REGION_SIZE).floor() as i32);
-        let (mut first, mut second) = ((f32::INFINITY, RegionId(0, 0)), (f32::INFINITY, RegionId(0, 0)));
+        let mut candidates = [(RegionId(0, 0), 0.0f32); CANDIDATES];
+        let mut index = 0;
         for dz in -1..=1 {
             for dx in -1..=1 {
                 let id = RegionId(base.0 + dx, base.1 + dz);
                 let (cx, cz) = self.center(id);
-                let distance = ((cx - wx) * (cx - wx) + (cz - wz) * (cz - wz)).sqrt();
-                if distance < first.0 {
-                    second = first;
-                    first = (distance, id);
-                } else if distance < second.0 {
-                    second = (distance, id);
-                }
+                candidates[index] = (id, ((cx - wx) * (cx - wx) + (cz - wz) * (cz - wz)).sqrt());
+                index += 1;
             }
         }
-        // Halbe Differenz der Abstände ≈ Abstand zur Grenze.
-        let to_border = (second.0 - first.0) * 0.5;
-        let inside = smooth(to_border / BORDER_BLEND);
+        // Nächste zuerst; bei gleichem Abstand entscheidet die Region (deterministisch).
+        candidates.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+        let nearest = candidates[0].1;
+        // Halbe Abstandsdifferenz ≈ Abstand zur Grenze mit der nächsten Region. Gewicht 1 auf der
+        // Grenze, 0 ab `BORDER_BLEND` dahinter; stetig in der Position.
+        let mut weights = [(RegionId(0, 0), 0.0f32); CANDIDATES];
+        let (mut count, mut total) = (0usize, 0.0f32);
+        for (id, distance) in candidates {
+            let weight = smooth(1.0 - (distance - nearest) * 0.5 / BORDER_BLEND);
+            if weight > 0.0 {
+                weights[count] = (id, weight);
+                count += 1;
+                total += weight;
+            }
+        }
+        for entry in &mut weights[..count] {
+            entry.1 /= total;
+        }
         RegionSample {
-            id: first.1,
-            neighbour: second.1,
-            neighbour_weight: 0.5 * (1.0 - inside),
+            id: candidates[0].0,
+            weights,
+            count: count as u8,
         }
     }
 
@@ -179,11 +203,13 @@ mod tests {
         while x < 20000.0 {
             x += 10.0;
             let sample = map.sample(x, 1234.0);
-            assert!((0.0..=0.5).contains(&sample.neighbour_weight));
+            assert!((0.0..=0.67).contains(&sample.foreign_weight()));
+            let total: f32 = sample.regions().iter().map(|r| r.1).sum();
+            assert!((total - 1.0).abs() < 1e-4, "Gewichte nicht normiert");
             if sample.id != last.id {
                 changes += 1;
-                // An der Grenze zählen beide Regionen etwa gleich.
-                assert!(sample.neighbour_weight > 0.45 && last.neighbour_weight > 0.45, "Sprung an der Grenze");
+                // An der Grenze zählt die eigene Region höchstens etwa halb.
+                assert!(sample.foreign_weight() > 0.45 && last.foreign_weight() > 0.45, "Sprung an der Grenze");
             }
             last = sample;
         }

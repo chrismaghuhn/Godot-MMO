@@ -335,18 +335,20 @@ fn surface_materials_unchanged_even_at_entrances() {
 /// jede Zelle an öffentlicher Luft unverändert lassen. Fängt z. B. die rein senkrechte Tiefe,
 /// ohne darauf angewiesen zu sein, dass die echte Welt passende Steilhänge mit Höhlen hat.
 #[test]
-fn shell_protects_a_synthetic_cliff_against_caves_everywhere() {
+fn shell_protects_a_synthetic_pit_against_caves_everywhere() {
     use super::caves::{CaveGrid, ShellHeights};
     use super::grid::CoarseGrid;
 
     let world = WorldGen::new(42);
     let underground = Underground::new(SecretSeed::from_u64(1), &world.cfg);
     let mut column = ColumnData::sample(&world, 0, 0);
-    // Klippe in x-Richtung: oben 26 m, unten 6 m, also 20 m senkrecht, komplett unter dem
+    // Grube: 20 m tiefe, senkrechte Wände in x-, z- und Diagonalrichtung (Review-Fund: eine
+    // reine x-Klippe prüfte die 3×3-Nachbarschaft nur in einer Richtung). Komplett unter dem
     // Meeresspiegel (32 m), damit `entrance` überall 0 ist.
-    for row in column.heights.iter_mut() {
+    for (iz, row) in column.heights.iter_mut().enumerate() {
         for (ix, height) in row.iter_mut().enumerate() {
-            *height = if ix < 17 { 26.0 } else { 6.0 };
+            let inside = (10..24).contains(&ix) && (10..24).contains(&iz) && ix + iz != 33;
+            *height = if inside { 6.0 } else { 26.0 };
         }
     }
     let grid = CaveGrid(CoarseGrid::build(0, 0, 0, |_, _| (), |_, _, _, _| -20.0));
@@ -373,7 +375,7 @@ fn shell_protects_a_synthetic_cliff_against_caves_everywhere() {
                     assert_eq!(
                         public.get(a, b, c).to_bits(),
                         full.get(a, b, c).to_bits(),
-                        "Klippen-Zelle {x},{y},{z} verändert (Ecke {a},{b},{c})"
+                        "Gruben-Zelle {x},{y},{z} verändert (Ecke {a},{b},{c})"
                     );
                 }
             }

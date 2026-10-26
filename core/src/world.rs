@@ -6,9 +6,9 @@ use crate::regions::{RegionId, RegionMap, RegionSample, RegionTheme};
 
 /// Wassertiefe in der Flussmitte.
 const RIVER_DEPTH: f32 = 1.25;
-/// Anstieg des Flussufers pro Einheit Fluss-Rauschen. Das Rauschen ändert sich im Mittel um
-/// ~0.006 pro Meter, das Ufer steigt damit typisch ~0.2 m pro Meter (~11°).
-const BANK_RISE: f32 = 35.0;
+/// Anstieg des Flussufers pro Einheit Fluss-Rauschen. Seit #50 ändert sich das Rauschen im
+/// Mittel um ~0.003 pro Meter, das Ufer steigt damit typisch ~0.2 m pro Meter (~11°).
+const BANK_RISE: f32 = 70.0;
 /// Weichheit des Übergangs vom Ufer ins ursprüngliche Gelände (Meter).
 const BANK_BLEND: f32 = 4.0;
 
@@ -105,9 +105,9 @@ impl WorldGen {
         height += raw.detail * hill_amp;
         height += continental * 5.0;
 
-        // Flussband schmaler als vorher, weil die Fluss-Noise seit #50 großräumiger ist.
+        // Flussband an die halb so steile Fluss-Noise seit #50 angepasst (gleiche Breite wie vorher).
         let lowland = smoothstep(sea + 55.0, sea + 3.0, height) * smoothstep(sea - 1.0, sea + 0.5, height);
-        let river_band = 1.0 - smoothstep(0.0, 0.020, raw.river.abs());
+        let river_band = 1.0 - smoothstep(0.0, 0.0144, raw.river.abs());
         let river = river_band * lowland;
         let uncarved = height;
         if lowland > 0.0 {
@@ -179,19 +179,23 @@ impl WorldGen {
         self.biomes.family(biome.kind).variants[biome.variant].color
     }
 
-    /// Oberflächenfarbe mit weichem Übergang an Regionsgrenzen: Farbe der eigenen Variante,
-    /// gemischt mit der Variante, die die Nachbarregion für dieselbe Familie hätte.
+    /// Oberflächenfarbe mit weichem Übergang an Regionsgrenzen: Mittel der Varianten, die jede
+    /// mitzählende Region für diese Familie hätte, gewichtet wie die Regionen.
     pub fn surface_color(&self, sample: &ColumnSample, biome: BiomeRef) -> [u8; 3] {
-        let own = self.biome_color(biome);
-        let weight = sample.region.neighbour_weight;
-        if weight <= 0.0 {
-            return own;
+        if sample.region.foreign_weight() <= 0.0 {
+            return self.biome_color(biome);
         }
-        let other = self.biome_color(BiomeRef {
-            kind: biome.kind,
-            variant: self.variant_in_region(biome.kind, sample, sample.region.neighbour),
-        });
-        std::array::from_fn(|i| (own[i] as f32 * (1.0 - weight) + other[i] as f32 * weight).round() as u8)
+        let mut sum = [0.0f32; 3];
+        for &(region, weight) in sample.region.regions() {
+            let color = self.biome_color(BiomeRef {
+                kind: biome.kind,
+                variant: self.variant_in_region(biome.kind, sample, region),
+            });
+            for i in 0..3 {
+                sum[i] += color[i] as f32 * weight;
+            }
+        }
+        sum.map(|c| c.round().clamp(0.0, 255.0) as u8)
     }
 
     pub fn apply_altitude(&self, color: [u8; 3], height: f32) -> [u8; 3] {
@@ -392,7 +396,7 @@ mod tests {
         for z in (-12000..12000).step_by(131) {
             for x in (-12000..12000).step_by(131) {
                 let sample = world.sample(x as f32, z as f32);
-                if sample.region.neighbour_weight > 0.0 {
+                if sample.region.foreign_weight() > 0.0 {
                     continue;
                 }
                 let biome = world.biome_at(&sample);
@@ -452,7 +456,8 @@ mod tests {
         assert!(typical_km > 1.0, "Varianten-Flächen nur {typical_km:.2} km groß");
     }
 
-    /// Weicher Übergang: Auf der Regionsgrenze ist die Farbe das Mittel beider Varianten.
+    /// Weicher Übergang: Auf einer Grenze zweier Regionen ist die Farbe das Mittel beider
+    /// Varianten; im Inneren gibt es keine Mischung.
     #[test]
     fn surface_colour_blends_at_region_borders() {
         let world = WorldGen::new(42);
@@ -463,12 +468,13 @@ mod tests {
             let sample = world.sample(x, 777.0);
             let biome = world.biome_at(&sample);
             let color = world.surface_color(&sample, biome);
-            if sample.region.neighbour_weight == 0.0 {
+            let regions = sample.region.regions();
+            if regions.len() == 1 {
                 assert_eq!(color, world.biome_color(biome), "im Inneren keine Mischung");
-            } else if sample.region.neighbour_weight > 0.49 {
+            } else if regions.len() == 2 && sample.region.foreign_weight() > 0.49 {
                 let other = world.biome_color(BiomeRef {
                     kind: biome.kind,
-                    variant: world.variant_in_region(biome.kind, &sample, sample.region.neighbour),
+                    variant: world.variant_in_region(biome.kind, &sample, regions[1].0),
                 });
                 let own = world.biome_color(biome);
                 for i in 0..3 {
@@ -479,5 +485,53 @@ mod tests {
             }
         }
         assert!(blended > 0, "keine Grenze auf der Teststrecke");
+    }
+
+    /// Review-Fund zu #50: An Dreiländerecken sprangen Thema, Klima und Farbe, weil nur zwei
+    /// Regionen gemischt wurden. 2D-Abtastung im 2-m-Raster um echte Dreiländerecken: Benachbarte
+    /// Punkte dürfen sich nur wenig unterscheiden.
+    #[test]
+    fn region_blend_is_continuous_around_triple_points() {
+        let world = WorldGen::new(42);
+        // Dreiländerecken suchen: Punkte, an denen drei Regionen mitzählen.
+        let mut triples = Vec::new();
+        'search: for z in (-20000..20000).step_by(150) {
+            for x in (-20000..20000).step_by(150) {
+                let sample = world.regions.sample(x as f32, z as f32);
+                if sample.regions().len() >= 3 && sample.regions()[2].1 > 0.2 {
+                    triples.push((x as f32, z as f32));
+                    if triples.len() >= 6 {
+                        break 'search;
+                    }
+                }
+            }
+        }
+        assert!(triples.len() >= 3, "keine Dreiländerecken gefunden");
+        let themes = [RegionTheme::Volcanic, RegionTheme::Crystal, RegionTheme::Fungal, RegionTheme::Normal];
+        let values = |x: f32, z: f32| {
+            let region = world.regions.sample(x, z);
+            let (t, h) = world.regions.climate_bias(&region);
+            let mut v = vec![t, h];
+            v.extend(themes.iter().map(|&theme| world.regions.theme_weight(&region, theme)));
+            v
+        };
+        let mut max_step = 0.0f32;
+        for (cx, cz) in triples {
+            for j in -100..100 {
+                for i in -100..100 {
+                    let (x, z) = (cx + i as f32 * 2.0, cz + j as f32 * 2.0);
+                    let here = values(x, z);
+                    for (dx, dz) in [(2.0, 0.0), (0.0, 2.0)] {
+                        let there = values(x + dx, z + dz);
+                        for (a, b) in here.iter().zip(&there) {
+                            max_step = max_step.max((a - b).abs());
+                        }
+                    }
+                }
+            }
+        }
+        // Breite der Übergangszone 1400 m: auf 2 m ändert sich ein Gewicht um deutlich < 0,02.
+        // Vorher sprang es um bis zu 0,5.
+        assert!(max_step < 0.02, "Sprung um {max_step} auf 2 m");
     }
 }

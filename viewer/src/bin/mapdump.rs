@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let seed: u32 = args.first().and_then(|s| s.parse().ok()).unwrap_or(42);
     let res: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(1024);
-    let area: f32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(4096.0);
+    let area: f32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(20000.0);
     let center_x: f32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let center_z: f32 = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0.0);
 
@@ -86,7 +86,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 (normal[0] * light[0] + normal[1] * light[1] + normal[2] * light[2]) / light_length;
             let shade = 0.55 + 0.6 * ndotl.clamp(0.0, 1.0);
 
-            let mut color = world.biome_color(biome);
+            let mut color = world.surface_color(sample, biome);
             color = world.apply_altitude(color, sample.height);
             let color = multiply(color, shade);
             map.put_pixel(i as u32, j as u32, Rgb(color));
