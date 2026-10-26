@@ -459,3 +459,104 @@ festlegen, wann ein Erz "freiliegt".
   sehen. Das liegt im Rahmen von D-005.
 - Review-Funde (weggecullte Wände an Nachbar-Höhlen, unsichtbare tiefe Schächte, fehlende
   Erzflächen durch 6er-Nachbarschaft, wachsende Job-Messwerte, veraltete Röntgen-Marker) – behoben.
+
+## D-019: Schmieden als Simulation statt Rezept
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Schmieden soll ein tiefer Skill werden, kein flaches Rezept-System. Jedes Schwert
+soll einzigartig sein und so aussehen, wie es geschmiedet wurde. Es sollen so wenig Assets wie
+möglich entstehen. Details in [docs/design/schmieden.md](docs/design/schmieden.md).
+
+**Entscheidung:**
+- Eine Klinge ist ein Datenmodell aus Segmenten (Form, Kohlenstoff, Gefüge, Härte, Fehler, …).
+  Jede Aktion verändert es; Werte und Aussehen werden daraus berechnet, nichts wird ausgewürfelt.
+- Simulation und Werte in `core/` (deterministisch, Server und Client gleich). Godot erzeugt nur
+  Mesh und Shader-Parameter aus den Daten, ohne Modelle oder Texturen für die Klinge.
+- Fortschritt über Wissen und Wahrnehmung (genauere Temperatur, Warnungen), nicht über Prozentboni.
+- Die Dauer wächst mit dem Material (von 2-5 Min. für Eisen bis 45+ Min. für Meisterwerke),
+  durch engere Fenster und mehr Schritte statt Timer. Gemeisterte Schritte gehen per Routine schneller.
+- Vorerst kein Totalverlust: Fehler machen die Klinge schlechter, sichtbar und nur teilweise
+  reparierbar. Gespeichert als Schweregrad 0.0-1.0, damit später eine Bruch-Schwelle möglich ist.
+- Gemeinsames Schmieden (Meister, Zuschläger, Heizer) wird im Datenmodell mitgedacht, umgesetzt
+  aber erst mit Multiplayer (D-010).
+
+**Alternativen:**
+- Rezept + Skill-Level → feste Werte: einfach, aber flach, und alle Schwerter gleich.
+- Modellierte Klingen-Assets mit Varianten: widerspricht dem Ziel, alles zu generieren, und
+  Aussehen und Werte hängen nicht zusammen.
+- Totalverlust bei Fehlern: spannender, aber frustrierend, solange das System neu ist.
+
+**Folgen:** Das Datenmodell der Klinge ist das Herzstück und muss vor der Umsetzung festgelegt
+werden. Prozedurale Optik braucht einen klaren Stil, sonst wirkt sie technisch. Ein Schwert wird
+als wenige hundert Bytes übertragen statt als Mesh.
+
+**Ergänzung (2026-10-26):**
+- Gemischt aktiv: Grundform geplant, kritische Momente (Schweißhitze, Falten, Abschrecken,
+  Anlassen) in Echtzeit.
+- Datenmodell allgemein geplant (Klingen, Äxte, Speerspitzen, Werkzeuge, Rüstungsplatten),
+  gebaut wird zuerst nur das Schwert.
+- Metallurgie vereinfacht real, keine Magie zum Start; magische Erze bleiben später möglich.
+
+**Ergänzung Datenmodell (2026-10-26):** Details in
+[docs/design/schmieden-datenmodell.md](docs/design/schmieden-datenmodell.md). Korrigiert zwei
+Punkte von oben:
+- Segmente haben eine eigene Länge und werden beim Strecken geteilt bzw. zusammengelegt
+  (Remeshing). Alle Bezüge laufen über die Position entlang der Klinge, nicht über den Index.
+- Gefüge in Zonen: 3 Breitenzonen (Schneide, Mitte, Rücken) plus Mantel-Lage, damit Lehm-Härten
+  und Verbundstähle wie San-Mai physikalisch funktionieren.
+- "Server und Client gleich" gilt nicht mehr: Simulation in Festkomma, der Server ist
+  autoritativ und schickt nach jeder Hitze den Zustand; Bitgleichheit braucht nur das
+  Nachspielen auf dem Server.
+- Ein Langschwert ist ≈ 1,8 KB statt "wenige hundert Bytes".
+- Nachtrag: Zwei Darstellungen. Arbeitszustand in feinem `i32` (≈ 6 KB pro Langschwert,
+  Snapshot pro Hitze), Fertigzustand grob (≈ 2 KB), gerundet wird genau einmal beim
+  Fertigstellen. Sonst hätten leichte Schläge keine Wirkung und die Volumenerhaltung würde
+  driften. Pro Segment wird das Volumen gespeichert, die Länge daraus abgeleitet.
+- Werkstücke speichern eine Formel-Version, fertige Stücke frieren ihre Werte ein.
+- Volles Aktions-Log nur während der Arbeit, danach Snapshots pro Hitze.
+
+Alternativen: feste Segmentlänge (widerspricht dem Strecken), ein Gefügewert pro Segment
+(Lehm-Härten nur kosmetisch), f32 mit Bitgleichheit auf allen Clients (dauerhafte Fehlerquelle,
+bei server-autoritativem Modell unnötig).
+
+## D-020: Charakter prozedural, First-Person mit echtem Körper
+- Datum: 2026-10-26
+- Status: angenommen
+
+**Kontext:** Für Phase 5 (#24) muss feststehen, wie ein Spieler aussieht, wie er sich bewegt und
+kämpft. Wie beim Schmieden (D-019) sollen so wenig Assets wie möglich entstehen. Details in
+[docs/design/charakter.md](docs/design/charakter.md) und [docs/design/kampf.md](docs/design/kampf.md).
+
+**Entscheidung:**
+- Stil stilisiert und etwas kantig. Körper aus Formen pro Knochen eines gemeinsamen Skeletts,
+  Mesh und Skin-Gewichte werden erzeugt, keine Modell- oder Textur-Assets.
+- First-Person mit echtem Körper: Kamera im Kopf des eigenen Charakters, andere sehen denselben
+  Körper in Third-Person.
+- Animation hybrid: Grund-Bewegungen als Keyframes im Code, darüber prozedurale Schichten
+  (Fuß-IK, Proportionen, Nachschwingen, Gewicht). Bewegung in `core/`, Animation in Godot.
+- Kampf aktiv und körperbetont: richtungsbasierte Schläge, Waffen-Physik aus der
+  Schmiede-Simulation, Parieren, Ausweichen, Ausdauer, Trefferzonen.
+- Proportionen wirken im Kampf (Reichweite), ausgeglichen durch Trefferfläche, Ausdauer,
+  Ausweichtempo und eine begrenzte Spanne.
+- Herkunftsregion beim Start bestimmt Kultur, Startwissen und Startpunkt, nicht den Körper.
+- Der Körper verändert sich langsam und begrenzt durch das, was man tut (Muskeln, Bräune,
+  ortsgenaue Narben).
+- Kein Klettern zum Start.
+
+**Alternativen:**
+- Ein Basis-Mesh mit Morphs: einfacher, aber ein Asset und weniger eigener Stil.
+- Volumen/SDF-Charaktere: sehr flexibel, aber schwer schön zu machen.
+- Schwebende First-Person-Arme: einfacher, aber Körper und Reichweite passen nicht zum Modell,
+  das andere sehen.
+- Komplett prozedurale Animation: ohne Keyframes, aber sehr schwer gut aussehen zu lassen.
+- Proportionen nur optisch: fairer, aber Körper und Waffe hätten weniger Bedeutung.
+- Klettern überall (BOTW): passt zu großen Regionen, aber viel Aufwand für den Start.
+
+**Folgen:** Ohne Klettern müssen Steilhänge über Wege, Umwege oder Graben/Bauen überwindbar
+sein. Nahkampf im Multiplayer braucht Lag-Kompensation auf dem Server (Phase 6). Clipping und
+Kamera-Stabilisierung sind bei First-Person mit echtem Körper eigene Aufgaben.
+
+**Ergänzung (2026-10-26):** Vereinfachte Hände mit Daumen plus einer Fingergruppe (wenige
+Knochen); Greifposen werden prozedural erzeugt. Volle Finger wären in First-Person schöner, aber
+deutlich mehr Animationsaufwand.
