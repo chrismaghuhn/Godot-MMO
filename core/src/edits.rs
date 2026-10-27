@@ -87,7 +87,7 @@ pub fn chunks_containing(voxel: IVec3) -> impl Iterator<Item = IVec3> {
 
 impl WorldEdits {
     pub fn is_empty(&self) -> bool {
-        self.by_owner.is_empty() && self.felled.is_empty()
+        self.touched.is_empty() && self.felled.is_empty()
     }
 
     /// Fällt einen Baum. `false`, wenn er schon gefällt war.
@@ -111,6 +111,13 @@ impl WorldEdits {
     /// Hat der Chunk (in seinem Sample-Bereich) irgendeine Änderung?
     pub fn touches(&self, chunk: IVec3) -> bool {
         self.touched.contains(&chunk)
+    }
+
+    /// Markiert Chunks als verändert, ohne Voxel zu speichern: Beim Godot-Client mit Server kommen
+    /// die geänderten Voxel fertig vom Server (D-005); das Streaming muss nur wissen, welche
+    /// Chunks es vollständig laden muss (#14).
+    pub fn mark_touched(&mut self, chunks: impl IntoIterator<Item = IVec3>) {
+        self.touched.extend(chunks);
     }
 
     /// Alle Chunks mit Änderungen im Sample-Bereich.
@@ -245,6 +252,8 @@ fn sphere_voxels(center: Vec3, radius: f32) -> impl Iterator<Item = IVec3> {
         })
     })
 }
+
+pub mod action;
 
 #[cfg(test)]
 mod tests;

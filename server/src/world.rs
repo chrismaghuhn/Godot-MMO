@@ -1,13 +1,17 @@
 //! Chunks für Clients (D-005, D-018): mit Höhlen und Erzen, verborgene Erze durch öffentliches
 //! Gestein ersetzt. Geschickt wird nur, was von der öffentlichen Oberfläche abweicht (`Diff`, bzw.
 //! `Public`, wenn nichts abweicht); die Oberfläche erzeugt der Client selbst.
+//!
+//! Spieler-Änderungen (#14, `edit.rs`) hält der Server; geänderte Chunks schickt er fertig, mit dem
+//! Erz-Filter auf dem geänderten Stand (frisch freigelegte Erze werden sichtbar).
 
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use glam::{IVec2, IVec3};
 use terraforge_core::WorldGen;
+use terraforge_core::edits::{Voxel, WorldEdits, owner_chunk};
 use terraforge_core::streaming::UndergroundSource;
 use terraforge_core::underground::{SecretSeed, Underground, hide_unexposed_ores};
 use terraforge_core::volume::{CHUNK_SIZE, ColumnData, DensityChunk};
@@ -17,6 +21,16 @@ use terraforge_protocol::{ChunkKind, ChunkReply};
 /// Höchstens so viele Spalten bzw. vollständige Chunks im Speicher (ein Chunk ≈ 240 KB).
 const COLUMN_CACHE: usize = 1024;
 const CHUNK_CACHE: usize = 128;
+
+/// Größte Chunk-Koordinate (waagerecht ±33.000 km, senkrecht ±8 km). Weiter draußen laufen die
+/// Rechnungen des Generators über.
+const MAX_CHUNK: u32 = 1 << 20;
+const MAX_CHUNK_Y: u32 = 256;
+
+pub(crate) fn in_world(position: IVec3) -> bool {
+    // `unsigned_abs`: `abs` liefe bei `i32::MIN` selbst über.
+    position.x.unsigned_abs() <= MAX_CHUNK && position.z.unsigned_abs() <= MAX_CHUNK && position.y.unsigned_abs() <= MAX_CHUNK_Y
+}
 
 /// Einfacher Cache: Wird er zu groß, fängt er von vorn an (wie im Viewer beim Graben).
 struct Cache<K, V>(Mutex<HashMap<K, V>>, usize);
@@ -42,17 +56,21 @@ impl<K: Eq + Hash + Copy, V: Clone> Cache<K, V> {
 }
 
 pub struct ServerWorld {
-    world: WorldGen,
+    pub(crate) world: WorldGen,
     underground: Underground,
     columns: Cache<IVec2, Arc<ColumnData>>,
+    /// Generierte Chunks ohne Spieler-Änderungen.
     chunks: Cache<IVec3, Arc<DensityChunk>>,
+    pub(crate) edits: RwLock<WorldEdits>,
+    /// Graben und Bauen nacheinander (`edit.rs`).
+    pub(crate) edit_lock: Mutex<()>,
 }
 
 impl ServerWorld {
     pub fn new(seed: u32, secret: SecretSeed) -> Self {
         let world = WorldGen::new(seed);
         let underground = Underground::new(secret, &world.cfg);
-        Self { world, underground, columns: Cache::new(COLUMN_CACHE), chunks: Cache::new(CHUNK_CACHE) }
+        Self { world, underground, columns: Cache::new(COLUMN_CACHE), chunks: Cache::new(CHUNK_CACHE), edits: RwLock::default(), edit_lock: Mutex::default() }
     }
 
     pub fn seed(&self) -> u32 {
@@ -67,29 +85,43 @@ impl ServerWorld {
         self.columns.get(position, || Arc::new(ColumnData::sample(&self.world, position.x, position.y)))
     }
 
-    /// Vollständiger, ungefilterter Chunk (für die Nachbarn im Erz-Filter).
-    fn full_chunk(&self, position: IVec3) -> Arc<DensityChunk> {
+    /// Vollständiger, ungefilterter Chunk ohne Spieler-Änderungen.
+    pub(crate) fn full_chunk(&self, position: IVec3) -> Arc<DensityChunk> {
         self.chunks.get(position, || {
             let column = self.column(IVec2::new(position.x, position.z));
             Arc::new(self.underground.materials_chunk(&self.world, &column, position.y))
         })
     }
 
-    fn air(&self, voxel: IVec3) -> bool {
-        let owner = voxel.div_euclid(IVec3::splat(CHUNK_SIZE));
+    /// Generierter Voxel ohne Spieler-Änderungen.
+    pub(crate) fn generated(&self, voxel: IVec3) -> Voxel {
+        let owner = owner_chunk(voxel);
         let local = voxel - owner * CHUNK_SIZE;
-        self.full_chunk(owner).get(local.x, local.y, local.z) <= 0.0
+        let chunk = self.full_chunk(owner);
+        Voxel { density: chunk.get(local.x, local.y, local.z), material: chunk.material(local.x, local.y, local.z) }
+    }
+
+    /// Aktueller Voxel mit Spieler-Änderungen. Hält das Lock nur kurz (nicht während des
+    /// Erzeugens), damit Graben nicht auf andere Anfragen wartet.
+    pub fn voxel(&self, voxel: IVec3) -> Voxel {
+        let edited = self.edits.read().unwrap_or_else(PoisonError::into_inner).get(voxel);
+        edited.unwrap_or_else(|| self.generated(voxel))
     }
 
     /// Der Chunk, wie ihn ein Client sehen darf (Erze nur, wenn sie freiliegen); `None` bei
     /// `ChunkKind::Mesh` ohne Mesh.
     pub fn client_chunk(&self, position: IVec3, kind: ChunkKind) -> Option<DensityChunk> {
         let column = self.column(IVec2::new(position.x, position.z));
-        let mut chunk = match kind {
-            ChunkKind::Mesh => self.underground.density_chunk(&self.world, &column, position.y)?,
-            ChunkKind::Full => (*self.full_chunk(position)).clone(),
+        let touched = self.edits.read().unwrap_or_else(PoisonError::into_inner).touches(position);
+        let mut chunk = if kind == ChunkKind::Mesh && !touched {
+            self.underground.density_chunk(&self.world, &column, position.y)?
+        } else {
+            // Geänderte Chunks immer vollständig: Ob sie ein Mesh brauchen, weiß nur der neue Stand.
+            let mut chunk = (*self.full_chunk(position)).clone();
+            self.edits.read().unwrap_or_else(PoisonError::into_inner).apply(&mut chunk);
+            chunk
         };
-        hide_unexposed_ores(&mut chunk, &column, |voxel| self.air(voxel));
+        hide_unexposed_ores(&mut chunk, &column, |voxel| self.voxel(voxel).density <= 0.0);
         Some(chunk)
     }
 

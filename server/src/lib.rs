@@ -2,12 +2,14 @@
 //!
 //! - `world`:      Chunks für Clients: Höhlen, Erze, Erz-Filter, Vergleich mit der Oberfläche
 //! - `connection`: eine Client-Verbindung (Anmeldung, Anfragen, Antworten)
+//! - `edit`:       Graben und Bauen prüfen und ausführen (#14)
 //! - `workers`:    Threads, die die Chunks berechnen
 //!
 //! Vorerst ein lokaler Prozess für den Singleplayer (Godot startet ihn, D-021). Server-autoritative
 //! Bewegung, mehrere Spieler und Interest Management kommen mit Phase 6 (#25, #26).
 
 mod connection;
+mod edit;
 mod workers;
 mod world;
 

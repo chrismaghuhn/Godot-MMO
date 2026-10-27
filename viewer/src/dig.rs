@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use terraforge_core::{
-    MaterialId,
-    edits::{Voxel, owner_chunk},
+    edits::action::{self, Action, TOOLS},
+    edits::{Voxel, WorldEdits, owner_chunk},
     volume::{CHUNK_SIZE, ColumnData, DensityChunk},
 };
 
@@ -25,12 +25,8 @@ use crate::streaming::{StreamerRes, StreamingSet, Tree};
 use crate::xray::XrayDirty;
 use crate::{EditsRes, UndergroundRes, WorldRes, env_parse};
 
-const DIG_RADIUS: f32 = 2.0;
-const BUILD_RADIUS: f32 = 1.5;
+/// Reichweite als Debug-Tool (im Spiel `action::REACH`). Radien und Werkzeuge kommen aus dem Core.
 const REACH: f32 = 64.0;
-const RAY_STEP: f32 = 0.25;
-/// Werkzeug-Stufen: Name und höchste abbaubare Härte (Mohs, siehe `materials.ron`).
-const TOOLS: [(&str, f32); 4] = [("Schaufel", 2.5), ("Feuersteinhacke", 4.0), ("Bronzehacke", 5.5), ("Eisenhacke", 7.0)];
 
 pub struct DigPlugin;
 
@@ -53,8 +49,8 @@ pub struct DigStatus {
 
 impl DigStatus {
     pub fn tool_label(&self) -> String {
-        let (name, hardness) = TOOLS[self.tool];
-        format!("{name} (Härte ≤ {hardness})")
+        let tool = TOOLS[self.tool];
+        format!("{} (Härte ≤ {})", tool.name, tool.max_hardness)
     }
 }
 
@@ -90,23 +86,8 @@ impl VoxelCache {
 }
 
 /// Erster Punkt entlang des Strahls mit festem Voxel (Änderung oder generiert) und sein Abstand.
-fn ray_hit(
-    origin: Vec3,
-    direction: Vec3,
-    reach: f32,
-    edits: &terraforge_core::edits::WorldEdits,
-    mut voxel_at: impl FnMut(IVec3) -> Voxel,
-) -> Option<(Vec3, f32)> {
-    let mut distance = 0.0;
-    while distance < reach {
-        let point = origin + direction * distance;
-        let voxel = point.round().as_ivec3();
-        if edits.get(voxel).unwrap_or_else(|| voxel_at(voxel)).density > 0.0 {
-            return Some((point, distance));
-        }
-        distance += RAY_STEP;
-    }
-    None
+fn ray_hit(origin: Vec3, direction: Vec3, reach: f32, edits: &WorldEdits, mut voxel_at: impl FnMut(IVec3) -> Voxel) -> Option<(Vec3, f32)> {
+    action::ray_hit(origin, direction, reach, |voxel| edits.get(voxel).unwrap_or_else(|| voxel_at(voxel)).density > 0.0)
 }
 
 #[derive(Component)]
@@ -169,51 +150,32 @@ fn dig_input(
     // laufende Jobs nicht blockiert werden.
     let origin = transform.translation;
     let direction = transform.forward().as_vec3();
-    let hit = {
+    let action = if dig { Action::Dig { tool: status.tool } } else { Action::Build };
+    let center = {
         let edits = edits.0.read().expect("Edits-Lock vergiftet");
-        ray_hit(origin, direction, REACH, &edits, |v| cache.voxel(&world, &underground, &columns, v)).map(|(p, _)| p)
+        let mut voxel_at = |v| cache.voxel(&world, &underground, &columns, v);
+        action::target(action, origin, direction, REACH, |v| edits.get(v).unwrap_or_else(|| voxel_at(v)).density > 0.0)
     };
-    let Some(hit) = hit else {
+    let Some(center) = center else {
         status.last = "kein Ziel in Reichweite".into();
         return;
     };
-    let center = if dig { hit } else { hit - direction * (BUILD_RADIUS * 0.8) };
-    let radius = if dig { DIG_RADIUS } else { BUILD_RADIUS } + 1.0;
 
     // Chunks der Kugel vorladen (teuer, ohne Lock); danach braucht das Graben nur noch den Cache.
     // Vorher Platz schaffen, damit der Cache nicht mitten im Vorladen geleert wird.
     if cache.0.len() > 48 {
         cache.0.clear();
     }
-    let (min, max) = ((center - Vec3::splat(radius)).floor().as_ivec3(), (center + Vec3::splat(radius)).ceil().as_ivec3());
+    let (min, max) = action::voxel_bounds(center, action);
     for corner in [min, max, IVec3::new(min.x, min.y, max.z), IVec3::new(min.x, max.y, min.z), IVec3::new(max.x, min.y, min.z), IVec3::new(max.x, max.y, min.z), IVec3::new(max.x, min.y, max.z), IVec3::new(min.x, max.y, max.z)] {
         cache.voxel(&world, &underground, &columns, corner);
     }
     let mut edits = edits.0.write().expect("Edits-Lock vergiftet");
-    let mut source = |voxel: IVec3| cache.voxel(&world, &underground, &columns, voxel);
+    let source = |voxel: IVec3| cache.voxel(&world, &underground, &columns, voxel);
 
-    let affected = if dig {
-        let (name, hardness) = TOOLS[status.tool];
-        let result = edits.dig_sphere(&world.0.materials, &mut source, center, DIG_RADIUS, hardness);
-        let mut parts: Vec<String> = result
-            .removed
-            .iter()
-            .map(|(material, count)| {
-                let label = world.0.materials.get(*material).map_or("?", |m| m.name.as_str());
-                format!("{count}× {label}")
-            })
-            .collect();
-        if result.too_hard > 0 {
-            parts.push(format!("{} zu hart für {name}", result.too_hard));
-        }
-        status.last = if parts.is_empty() { "nichts abgebaut".into() } else { parts.join(", ") };
-        result.affected
-    } else {
-        // Etwas vor die Oberfläche gesetzt (siehe `center`), damit die Kugel auf dem Boden sitzt.
-        let result = edits.place_sphere(&mut source, center, BUILD_RADIUS, MaterialId::DIRT);
-        status.last = format!("{} Erde gebaut", result.placed);
-        result.affected
-    };
+    let outcome = action::apply(&mut edits, &world.0.materials, source, center, action);
+    status.last = action::summary(&outcome, &world.0.materials, action);
+    let affected = outcome.changed();
 
     xray_dirty.0.extend(affected.iter().copied());
     columns.mark_changed(affected.iter().copied());

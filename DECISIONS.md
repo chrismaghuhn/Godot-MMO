@@ -739,4 +739,39 @@ Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
 - Offen: Bäume ohne Kollision (#58); Körper-Maße fest (später vom Charakter, #24); `sin`/`cos` sind
   nicht auf allen Plattformen bitgleich (für Vorhersage gegen den Server in Phase 6, #59). Bei
   schnellem Graben kann ein älterer Neubau einen neueren Feld-Stand kurz überschreiben (bräuchte
-  eine Edit-Version pro Chunk, mit #14). Das Spielgefühl der Steuerung ist nur von Hand prüfbar (#60).
+  eine Edit-Version pro Chunk, mit #14 erledigt). Das Spielgefühl der Steuerung ist nur von Hand
+  prüfbar (#60).
+
+**Umsetzung Graben und Bauen (#14, 2026-10-27):**
+- Gemeinsamer Teil im Core (`edits/action.rs`): Werkzeug-Stufen, Radien (Graben 2 m, Bauen 1,5 m),
+  Reichweite 8 m, Ziel per Strahl vom Auge, Prüfung „nicht in den eigenen Körper bauen“, welche
+  Chunks danach neu zu laden sind. Server, Godot-Client ohne Server und Viewer nutzen ihn (der
+  Viewer unverändert, Szenen-Hash gleich, Reichweite dort weiter 64 m).
+- Protokoll 2: Der Client schickt nur `Edit { Auge, Blickrichtung, Dig{tool} | Build }`. Der Server
+  bestimmt das Ziel im echten Untergrund, prüft Format, Werkzeug, Weltgrenze, Tempo (eine Aktion pro
+  100 ms und Verbindung), Auge nicht im Fels und Körper, gräbt und antwortet mit `Edited` (Ausbeute,
+  Chunks zum Neuladen). `Edited` kommt erst, wenn die Änderung gilt; jede danach gestellte
+  Chunk-Anfrage enthält sie. Aktionen laufen auf dem Server nacheinander.
+- Der Server hält die Änderungen und schickt geänderte Chunks fertig, mit dem Erz-Filter auf dem
+  neuen Stand: Frisch freigelegte Erze werden sichtbar, die Chunks zum Neuladen reichen dafür einen
+  Voxel weiter (26 Nachbarn). Der Client merkt sich nur, welche Chunks verändert sind
+  (`WorldEdits::mark_touched`), und lädt sie vollständig vom Server.
+- Edit-Version im Dichtefeld: Jeder Job merkt sich beim Start einen Zähler; Ergebnisse von Jobs, die
+  vor der letzten Änderung eines Chunks gestartet sind, verwirft das Feld.
+- Ohne Server gräbt der Client in der öffentlichen Oberfläche. Nach einem Ausfall des Servers wird
+  nicht mehr gegraben (die Welt mischte sonst Server-Stand und Oberfläche).
+- Review-Funde behoben: Graben aus einem Auge im Fels meldete in `too_hard` verborgene harte Voxel
+  (Untergrund abtastbar, D-005); jetzt abgelehnt, und `too_hard` zählt nur Voxel, die danach an
+  Luft grenzen. Nach einem Server-Ausfall grub der Client in öffentlichen Daten und mischte beide
+  Stände. Chunks konnten unter dem Schreib-Lock erzeugt werden; Aktionen konnten sich überholen;
+  Ziel und Chunks wurden nicht gegen die Weltgrenze geprüft. Zweite Runde: „Auge im Fels“ lehnte
+  ~5 % der Aktionen dicht an Wänden ab (jetzt erst, wenn die ganze Zelle um das Auge fest ist); ein
+  Fehler mitten im Anwenden ließ Client und Server auseinanderlaufen (jetzt `Failed` mit den
+  Chunks zum Neuladen).
+- Offen (Phase 6, #25): Die Augenposition meldet der Client selbst. Bis die Bewegung
+  server-autoritativ ist, kann ein Client an beliebiger Stelle graben und über Annahme/Ablehnung
+  abtasten, ob ein Punkt Luft ist. Aktionen laufen samt Chunk-Erzeugung unter einem Lock im
+  gemeinsamen Worker-Pool; viele Aktionen an kalten Stellen bremsen das Streaming (mit #25 eigene
+  Queue). Bäume
+  fällen gibt es im Godot-Client noch nicht (im Viewer X; mit #21). Änderungen gehen beim Beenden
+  verloren (Speichern mit #19).

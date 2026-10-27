@@ -2,16 +2,18 @@
 //!
 //! Eine Datei pro Godot-Klasse:
 //! - `body`:    `TerraforgeBody`, Bewegung und Kollision aus dem Core (#13)
+//! - `dig`:     Graben und Bauen am `TerraforgeTerrain`, geprüft vom Server (#14)
 //! - `world`:   `TerraforgeWorld`, die öffentliche Weltgenerierung (Höhe, Biom, Spawnpunkt)
 //! - `terrain`: `TerraforgeTerrain`, Chunk-Streaming um die Kamera (#11)
 //! - `server`:  lokaler Server als Kindprozess (#56, keine Godot-Klasse)
 //! - `trees`:   Bäume als MultiMesh pro Spalte und Baum-Mesh (#12, keine Godot-Klasse)
 //! - `mesh`:    Core-Meshes → Godot-Meshes (keine Godot-Klasse)
 //!
-//! Der geheime Untergrund ist nicht enthalten (D-005); Höhlen und Erze kommen später vom Server
-//! (#56). Build-Anleitung: `client/README.md`.
+//! Der geheime Untergrund ist nicht enthalten (D-005); Höhlen und Erze kommen vom Server (#56).
+//! Build-Anleitung: `client/README.md`.
 
 mod body;
+mod dig;
 mod mesh;
 mod server;
 mod terrain;

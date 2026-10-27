@@ -4,6 +4,10 @@
 # WASD laufen, Leertaste springen, Shift rennen, F zwischen Laufen und Fliegen wechseln, im Flug
 # Q/E runter/hoch. Rechte Maustaste gedrückt halten zum Umsehen.
 #
+# Graben und Bauen (#14) wie im Viewer: Linksklick gräbt, B baut Erde, T wechselt das Werkzeug.
+# Ziel ist der Punkt unter dem Fadenkreuz, höchstens 8 m entfernt; prüfen und ausführen tut es der
+# Server (`TerraforgeTerrain.dig`/`build`).
+#
 # Der Körper bewegt sich im Physik-Takt (interpoliert). Die Kamera ist ein eigener Node ohne
 # Interpolation, der in `_process` der interpolierten Position folgt und den Blickwinkel direkt aus
 # der Maus nimmt: So reagiert die Maus sofort statt mit einem Physik-Takt Verzögerung.
@@ -20,6 +24,10 @@ var flying := false
 ## Blickrichtung (Radiant): yaw um die Hochachse (0 = −z), pitch nach oben positiv.
 var yaw := 0.0
 var pitch := 0.0
+## Werkzeug-Stufe; wie im Viewer zu Beginn die stärkste.
+var tool := TerraforgeTerrain.tool_count() - 1
+## Ergebnis der letzten Grab- oder Bau-Aktion (für das Overlay).
+var edit_message := ""
 
 
 ## Fußpunkt `feet`, Blick auf `target`.
@@ -57,8 +65,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= event.relative.x * MOUSE_SENSITIVITY
 		pitch = clampf(pitch - event.relative.y * MOUSE_SENSITIVITY, -1.5, 1.5)
-	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F:
-		set_flying(not flying)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		dig()
+	elif event is InputEventKey and event.pressed and not event.echo:
+		match event.physical_keycode:
+			KEY_F:
+				set_flying(not flying)
+			KEY_B:
+				build()
+			KEY_T:
+				tool = (tool + 1) % TerraforgeTerrain.tool_count()
+
+
+## Gräbt unter dem Fadenkreuz; das Ergebnis kommt einige Frames später (`edit_message`).
+func dig() -> int:
+	return terrain.dig(camera.global_position, -camera.global_basis.z, tool)
+
+
+func build() -> int:
+	return terrain.build(camera.global_position, -camera.global_basis.z)
 
 
 static func axis(negative: Key, positive: Key) -> float:
@@ -83,6 +108,9 @@ func _physics_process(delta: float) -> void:
 
 func _process(_delta: float) -> void:
 	_place_camera()
+	if terrain != null:
+		for result in terrain.take_edit_results():
+			edit_message = result.message
 
 
 func _place_camera() -> void:

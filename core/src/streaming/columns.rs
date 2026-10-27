@@ -26,6 +26,8 @@ pub(super) struct ColumnBuild<M> {
     fields: Vec<Arc<DensityChunk>>,
     /// Neubau nach Graben/Bauen: ersetzt die geladene Spalte.
     rebuild: bool,
+    /// Stand der Änderungen beim Start des Jobs (`DensityField::epoch`).
+    epoch: u64,
 }
 
 pub(super) struct Columns<M> {
@@ -138,8 +140,8 @@ impl<M: Send + 'static> Columns<M> {
             }
             // Beim Neubau die vorhandenen Höhen wiederverwenden.
             let cached = if rebuild { frame.cache.get(&position).cloned() } else { None };
-            let ctx = frame.ctx.clone();
-            let ticket = frame.pool.spawn(JobKind::Column, move || Built::Column(build_column(&ctx, position, cached, rebuild)));
+            let (ctx, epoch) = (frame.ctx.clone(), frame.field.epoch());
+            let ticket = frame.pool.spawn(JobKind::Column, move || Built::Column(build_column(&ctx, position, cached, rebuild, epoch)));
             self.pending.insert(position, ticket);
         }
     }
@@ -162,7 +164,7 @@ impl<M: Send + 'static> Columns<M> {
         }
         let camera = camera_chunk(frame.camera);
         for chunk in build.fields {
-            frame.field.insert(chunk, camera);
+            frame.field.insert(chunk, build.epoch, camera);
         }
         // Ein Neubau ersetzt die alte Spalte erst jetzt, wo die neue da ist (kein Flackern).
         self.loaded.insert(position);
@@ -171,7 +173,7 @@ impl<M: Send + 'static> Columns<M> {
 }
 
 /// Baut die Oberflächen-Chunks und Bäume einer Spalte (im Worker-Thread).
-fn build_column<M>(ctx: &Context<M>, position: IVec2, cached: Option<Arc<ColumnData>>, rebuild: bool) -> ColumnBuild<M> {
+fn build_column<M>(ctx: &Context<M>, position: IVec2, cached: Option<Arc<ColumnData>>, rebuild: bool, epoch: u64) -> ColumnBuild<M> {
     let (world, source, edits) = (&*ctx.world, &*ctx.source, &*ctx.edits);
     let column = cached.unwrap_or_else(|| Arc::new(ColumnData::sample(world, position.x, position.y)));
     // Chunks mit Oberfläche (inkl. Höhleneingängen) und veränderte Chunks, die laut Generator
@@ -250,5 +252,5 @@ fn build_column<M>(ctx: &Context<M>, position: IVec2, cached: Option<Arc<ColumnD
         }
     });
     let fields = fields.into_values().map(Arc::new).collect();
-    ColumnBuild { position, column, meshes, links, trees, fields, rebuild }
+    ColumnBuild { position, column, meshes, links, trees, fields, rebuild, epoch }
 }

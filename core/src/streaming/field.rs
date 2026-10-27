@@ -29,15 +29,35 @@ pub(super) struct FieldBuild {
     chunk: Arc<DensityChunk>,
 }
 
+/// Dichtefeld nahe der Kamera.
+///
+/// **Edit-Version (#14):** Jeder Job merkt sich beim Start `epoch`. Wird ein Chunk verändert, zählt
+/// `epoch` hoch und der Chunk merkt sich den neuen Stand (`changed`). Ergebnisse von Jobs, die vor
+/// der letzten Änderung gestartet sind, verwirft das Feld: Sonst könnte ein älterer Neubau einer
+/// Spalte, der erst nach dem neuen Stand fertig wird, ihn wieder überschreiben (Review-Fund #13).
+/// `changed` wird nicht aufgeräumt: ein Eintrag pro je veränderten Chunk.
 #[derive(Default)]
 pub(super) struct DensityField {
     chunks: HashMap<IVec3, Arc<DensityChunk>>,
     pending: HashMap<IVec3, Ticket>,
     /// Veränderte Chunks: Der alte Stand gilt weiter, bis der neue da ist.
     stale: HashSet<IVec3>,
+    epoch: u64,
+    /// Stand (`epoch`) der letzten Änderung je Chunk.
+    changed: HashMap<IVec3, u64>,
 }
 
 impl DensityField {
+    /// Aktueller Stand der Änderungen; Jobs merken ihn sich beim Start.
+    pub(super) fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    /// Ist ein Ergebnis, dessen Job bei `epoch` startete, älter als die letzte Änderung des Chunks?
+    fn outdated(&self, position: IVec3, epoch: u64) -> bool {
+        self.changed.get(&position).is_some_and(|&changed| epoch < changed)
+    }
+
     pub(super) fn pending_count(&self) -> usize {
         self.pending.len()
     }
@@ -58,6 +78,8 @@ impl DensityField {
     /// bleibt bis dahin: Ohne ihn gälte die öffentliche Höhe, Gegrabenes wäre kurz massiv und der
     /// Körper würde herausgeschoben (Review-Fund: 8,7 m aus einer Grube).
     pub(super) fn invalidate(&mut self, chunk: IVec3) {
+        self.epoch += 1;
+        self.changed.insert(chunk, self.epoch);
         self.pending.remove(&chunk);
         if self.chunks.contains_key(&chunk) {
             self.stale.insert(chunk);
@@ -108,10 +130,10 @@ impl DensityField {
         }
     }
 
-    /// Übernimmt einen fertigen Chunk, wenn er nahe genug an der Kamera liegt.
-    pub(super) fn insert(&mut self, chunk: Arc<DensityChunk>, camera: IVec3) {
-        if self.stale.contains(&chunk.position) && self.pending.contains_key(&chunk.position) {
-            // Ein Feld-Job holt den neuen Stand schon; dieser Chunk kann älter sein.
+    /// Übernimmt einen fertigen Chunk eines Jobs, der bei `epoch` startete, wenn er nahe genug an
+    /// der Kamera liegt und nicht älter als die letzte Änderung ist.
+    pub(super) fn insert(&mut self, chunk: Arc<DensityChunk>, epoch: u64, camera: IVec3) {
+        if self.outdated(chunk.position, epoch) {
             return;
         }
         self.stale.remove(&chunk.position);
@@ -126,6 +148,13 @@ impl DensityField {
     pub(super) fn remove_column(&mut self, column: IVec2) {
         self.chunks.retain(|position, _| position.xz() != column);
         self.stale.retain(|position| position.xz() != column);
+    }
+
+    /// Ein Job (gestartet bei `epoch`) meldet: kein Dichtefeld nötig (massiv ohne Hohlraum).
+    pub(super) fn remove_built(&mut self, chunk: IVec3, epoch: u64) {
+        if !self.outdated(chunk, epoch) {
+            self.remove(chunk);
+        }
     }
 
     pub(super) fn remove(&mut self, chunk: IVec3) {
@@ -155,5 +184,31 @@ impl DensityField {
             Some(column) => column.height(local.x, local.z) - voxel.y as f32,
             None => world.column_height(voxel.x as f32, voxel.z as f32) - voxel.y as f32,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ein älterer Neubau, der nach dem neuen Stand fertig wird, überschreibt ihn nicht (#14).
+    #[test]
+    fn older_builds_do_not_overwrite_a_newer_state() {
+        let world = WorldGen::new(42);
+        let column = ColumnData::sample(&world, 0, 0);
+        let chunk_y = column.surface_chunks().next().expect("Oberflächen-Chunk");
+        let position = IVec3::new(0, chunk_y, 0);
+        let build = || Arc::new(DensityChunk::from_column(&column, chunk_y));
+        let mut field = DensityField::default();
+        let before = field.epoch();
+        field.insert(build(), before, position);
+        field.invalidate(position);
+        let after = field.epoch();
+        let new = build();
+        field.insert(Arc::clone(&new), after, position);
+        // Gestartet vor der Änderung, fertig erst jetzt.
+        field.insert(build(), before, position);
+        field.remove_built(position, before);
+        assert!(Arc::ptr_eq(&field.chunks[&position], &new));
     }
 }

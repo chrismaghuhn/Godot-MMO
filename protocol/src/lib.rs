@@ -15,4 +15,4 @@ pub mod framing;
 pub mod messages;
 
 pub use client::NetworkSource;
-pub use messages::{ChunkKind, ChunkReply, ClientMessage, ServerMessage, VERSION};
+pub use messages::{ChunkKind, ChunkReply, ClientMessage, EditAction, EditOutcome, ServerMessage, VERSION};

@@ -6,6 +6,9 @@
 //!
 //! Fällt der Server aus, liefert die Quelle die öffentliche Oberfläche (`PublicSurface`): Das
 //! Spiel läuft weiter, nur ohne Höhlen. `failed()` meldet das dem Client.
+//!
+//! Graben und Bauen (#14) laufen ohne Warten: `send_edit` schickt die Anfrage, die Antworten holt
+//! der Client pro Frame mit `take_edits` ab.
 
 use std::collections::HashMap;
 use std::io;
@@ -23,17 +26,19 @@ use terraforge_core::volume::{ColumnData, DensityChunk};
 
 use crate::framing::{read_message, write_message};
 use crate::chunk::apply;
-use crate::messages::{ChunkKind, ChunkReply, ClientMessage, ServerMessage, VERSION};
+use crate::messages::{ChunkKind, ChunkReply, ClientMessage, EditAction, EditOutcome, ServerMessage, VERSION};
 
 /// So lange wartet ein Worker höchstens auf einen Chunk.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 type Pending = Arc<Mutex<HashMap<u64, Sender<ChunkReply>>>>;
+type Edited = Arc<Mutex<Vec<(u64, EditOutcome)>>>;
 
 pub struct NetworkSource {
     lowest_cave_chunk: i32,
     writer: Mutex<TcpStream>,
     pending: Pending,
+    edited: Edited,
     next_request: AtomicU64,
     failed: Arc<AtomicBool>,
     reader: Option<JoinHandle<()>>,
@@ -57,10 +62,11 @@ impl NetworkSource {
         stream.set_read_timeout(None)?;
 
         let pending: Pending = Arc::default();
+        let edited: Edited = Arc::default();
         let failed = Arc::new(AtomicBool::new(false));
         let mut reader_stream = stream.try_clone()?;
         let reader = {
-            let (pending, failed) = (Arc::clone(&pending), Arc::clone(&failed));
+            let (pending, edited, failed) = (Arc::clone(&pending), Arc::clone(&edited), Arc::clone(&failed));
             std::thread::Builder::new().name("terraforge-net".into()).spawn(move || {
                 loop {
                     match read_message::<ServerMessage>(&mut reader_stream) {
@@ -69,21 +75,47 @@ impl NetworkSource {
                                 sender.send(reply).ok();
                             }
                         }
+                        Ok(Some(ServerMessage::Edited { request, outcome })) => {
+                            edited.lock().unwrap_or_else(PoisonError::into_inner).push((request, outcome));
+                        }
                         Ok(Some(other)) => eprintln!("terraforge: unerwartete Nachricht vom Server: {other:?}"),
                         Ok(None) | Err(_) => break,
                     }
                 }
                 // Verbindung weg: Wartende Worker bekommen keine Antwort mehr.
-                failed.store(true, Ordering::Relaxed);
+                // `Release`/`Acquire`: Wer `failed` sieht, sieht auch alle Antworten davor.
+                failed.store(true, Ordering::Release);
                 pending.lock().unwrap_or_else(PoisonError::into_inner).clear();
             })?
         };
-        Ok(Self { lowest_cave_chunk, writer: Mutex::new(stream), pending, next_request: AtomicU64::new(0), failed, reader: Some(reader) })
+        Ok(Self { lowest_cave_chunk, writer: Mutex::new(stream), pending, edited, next_request: AtomicU64::new(0), failed, reader: Some(reader) })
     }
 
     /// Ob die Verbindung ausgefallen ist (ab dann nur noch öffentliche Oberfläche).
     pub fn failed(&self) -> bool {
-        self.failed.load(Ordering::Relaxed)
+        self.failed.load(Ordering::Acquire)
+    }
+
+    /// Schickt eine Grab- oder Bau-Anfrage; die Antwort kommt über `take_edits` mit derselben
+    /// Nummer. `None`, wenn die Verbindung weg ist.
+    pub fn send_edit(&self, eye: [f32; 3], direction: [f32; 3], action: EditAction) -> Option<u64> {
+        if self.failed() {
+            return None;
+        }
+        let request = self.next_request.fetch_add(1, Ordering::Relaxed);
+        let message = ClientMessage::Edit { request, eye, direction, action };
+        match write_message(&mut *self.writer.lock().unwrap_or_else(PoisonError::into_inner), &message) {
+            Ok(()) => Some(request),
+            Err(_) => {
+                self.failed.store(true, Ordering::Release);
+                None
+            }
+        }
+    }
+
+    /// Antworten auf `send_edit` seit dem letzten Aufruf, in der Reihenfolge des Eintreffens.
+    pub fn take_edits(&self) -> Vec<(u64, EditOutcome)> {
+        std::mem::take(&mut *self.edited.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
     /// Fragt einen Chunk an und wartet auf die Antwort; `None`, wenn keine kommt.
@@ -99,7 +131,7 @@ impl NetworkSource {
         let reply = sent.ok().and_then(|()| receiver.recv_timeout(REQUEST_TIMEOUT).ok());
         if reply.is_none() {
             self.pending.lock().unwrap_or_else(PoisonError::into_inner).remove(&request);
-            if !self.failed.swap(true, Ordering::Relaxed) {
+            if !self.failed.swap(true, Ordering::AcqRel) {
                 eprintln!("terraforge: Server antwortet nicht, weiter ohne Untergrund");
             }
         }

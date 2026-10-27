@@ -1,5 +1,5 @@
-//! Eine Client-Verbindung: Anmeldung prüfen, dann Chunk-Anfragen an die Worker geben und die
-//! Antworten in beliebiger Reihenfolge zurückschicken.
+//! Eine Client-Verbindung: Anmeldung prüfen, dann Chunk- und Edit-Anfragen an die Worker geben und
+//! die Antworten in beliebiger Reihenfolge zurückschicken.
 
 use std::net::TcpStream;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -7,9 +7,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use glam::IVec3;
 use terraforge_protocol::framing::{read_message, write_message};
-use terraforge_protocol::{ChunkReply, ClientMessage, ServerMessage, VERSION};
+use terraforge_protocol::{ChunkReply, ClientMessage, EditOutcome, ServerMessage, VERSION};
 
 use crate::ServerWorld;
+use crate::world::in_world;
 use crate::workers::Workers;
 
 pub fn handle(stream: TcpStream, world: &Arc<ServerWorld>, workers: &Workers) {
@@ -17,16 +18,6 @@ pub fn handle(stream: TcpStream, world: &Arc<ServerWorld>, workers: &Workers) {
     if let Err(error) = serve_client(stream, world, workers) {
         eprintln!("terraforge-server: Verbindung {peer} beendet: {error}");
     }
-}
-
-/// Größte Chunk-Koordinate (waagerecht ±33.000 km, senkrecht ±8 km). Weiter draußen laufen die
-/// Rechnungen des Generators über.
-const MAX_CHUNK: u32 = 1 << 20;
-const MAX_CHUNK_Y: u32 = 256;
-
-fn in_world(position: IVec3) -> bool {
-    // `unsigned_abs`: `abs` liefe bei `i32::MIN` selbst über.
-    position.x.unsigned_abs() <= MAX_CHUNK && position.z.unsigned_abs() <= MAX_CHUNK && position.y.unsigned_abs() <= MAX_CHUNK_Y
 }
 
 fn serve_client(mut stream: TcpStream, world: &Arc<ServerWorld>, workers: &Workers) -> std::io::Result<()> {
@@ -44,6 +35,7 @@ fn serve_client(mut stream: TcpStream, world: &Arc<ServerWorld>, workers: &Worke
         _ => return Ok(()),
     }
     let writer = Arc::new(Mutex::new(stream.try_clone()?));
+    let mut last_edit = None;
     while let Some(message) = read_message::<ClientMessage>(&mut stream)? {
         match message {
             ClientMessage::Chunk { request, position, kind } => {
@@ -62,6 +54,21 @@ fn serve_client(mut stream: TcpStream, world: &Arc<ServerWorld>, workers: &Worke
                         })
                     };
                     let message = ServerMessage::Chunk { request, reply };
+                    write_message(&mut *writer.lock().unwrap_or_else(PoisonError::into_inner), &message).ok();
+                });
+            }
+            ClientMessage::Edit { request, eye, direction, action } => {
+                let (world, writer) = (Arc::clone(world), Arc::clone(&writer));
+                let checked = crate::edit::check(eye, direction, action, &mut last_edit);
+                workers.run(move || {
+                    let outcome = match checked {
+                        Ok((eye, direction, action)) => catch_unwind(AssertUnwindSafe(|| world.edit(eye, direction, action))).unwrap_or_else(|_| {
+                            eprintln!("terraforge-server: Fehler beim Graben/Bauen bei {eye}");
+                            EditOutcome::Refused { reason: "Fehler auf dem Server".into() }
+                        }),
+                        Err(reason) => EditOutcome::Refused { reason },
+                    };
+                    let message = ServerMessage::Edited { request, outcome };
                     write_message(&mut *writer.lock().unwrap_or_else(PoisonError::into_inner), &message).ok();
                 });
             }

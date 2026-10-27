@@ -1,6 +1,6 @@
-//! Terrain-Streaming (#11), Höhlen vom Server (#56), Bewegung (#13) und Hauptszene in einem echten
-//! Godot (headless). Die Prüfungen stehen in `client/tests/terrain_smoke.gd` und
-//! `client/tests/player_smoke.gd`. Braucht Godot 4.7 (`GODOT`).
+//! Terrain-Streaming (#11), Höhlen vom Server (#56), Bewegung (#13), Graben und Bauen (#14) und
+//! Hauptszene in einem echten Godot (headless). Die Prüfungen stehen in `client/tests/*.gd`.
+//! Braucht Godot 4.7 (`GODOT`).
 
 mod common;
 
@@ -45,4 +45,24 @@ fn player_walks_on_the_terrain_in_godot() {
     let stdout = common::run_script(&project, "res://tests/player_smoke.gd", &[], &[]);
     let line = stdout.lines().find(|l| l.starts_with("TERRAFORGE_PLAYER ")).expect("keine Ergebniszeile");
     assert!(!line.contains("fields=0"), "kein Dichtefeld: {line}");
+}
+
+/// Graben und Bauen über den Server (#14): Grube unter den Füßen, Erde vor dem Auge, kein Bauen in
+/// den eigenen Körper; der neue Stand kommt auch im Dichtefeld der Kollision an.
+#[test]
+fn digging_and_building_go_through_the_server_in_godot() {
+    let server = common::server_binary();
+    let project = common::TestProject::new();
+    let stdout = common::run_script(&project, "res://tests/dig_smoke.gd", &[server.display().to_string()], &[]);
+    let line = stdout.lines().find(|l| l.starts_with("TERRAFORGE_DIG ")).expect("keine Ergebniszeile");
+    assert!(line.contains("server=verbunden"), "{line}");
+}
+
+/// Ohne Server gräbt der Client selbst in der öffentlichen Oberfläche.
+#[test]
+fn digging_and_building_work_without_a_server_in_godot() {
+    let project = common::TestProject::new();
+    let stdout = common::run_script(&project, "res://tests/dig_smoke.gd", &["off".into()], &[]);
+    let line = stdout.lines().find(|l| l.starts_with("TERRAFORGE_DIG ")).expect("keine Ergebniszeile");
+    assert!(line.contains("server=aus"), "{line}");
 }

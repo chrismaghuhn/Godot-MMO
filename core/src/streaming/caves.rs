@@ -30,6 +30,8 @@ pub(super) struct CaveBuild<M> {
     links: FaceLinks,
     /// Dichtefeld für die Kollision (#13); `None` bei massivem Fels ohne Hohlraum.
     density: Option<Arc<DensityChunk>>,
+    /// Stand der Änderungen beim Start des Jobs (`DensityField::epoch`).
+    epoch: u64,
 }
 
 pub(super) struct Caves<M> {
@@ -121,8 +123,8 @@ impl<M: Send + 'static> Caves<M> {
             let mesh = build.mesh.is_some();
             inserted += usize::from(mesh);
             match build.density {
-                Some(density) => frame.field.insert(density, center),
-                None => frame.field.remove(build.position),
+                Some(density) => frame.field.insert(density, build.epoch, center),
+                None => frame.field.remove_built(build.position, build.epoch),
             }
             let old = self.map.insert(build.position, CaveEntry { mesh, visible: true, links: build.links });
             // Neubau nach Graben: das alte Mesh wird erst jetzt ersetzt.
@@ -189,8 +191,8 @@ impl<M: Send + 'static> Caves<M> {
         let slots = limits.jobs.saturating_sub(self.pending.len());
         for (position, column) in rebuilds.into_iter().take(slots) {
             frame.dirty.caves.remove(&position);
-            let ctx = frame.ctx.clone();
-            let ticket = frame.pool.spawn(JobKind::Cave, move || Built::Cave(build_cave(&ctx, position, &column)));
+            let (ctx, epoch) = (frame.ctx.clone(), frame.field.epoch());
+            let ticket = frame.pool.spawn(JobKind::Cave, move || Built::Cave(build_cave(&ctx, position, &column, epoch)));
             self.pending.insert(position, ticket);
         }
     }
@@ -240,7 +242,7 @@ impl<M: Send + 'static> Caves<M> {
 }
 
 /// Baut einen Höhlen-Chunk (im Worker-Thread).
-fn build_cave<M>(ctx: &Context<M>, position: IVec3, column: &ColumnData) -> CaveBuild<M> {
+fn build_cave<M>(ctx: &Context<M>, position: IVec3, column: &ColumnData, epoch: u64) -> CaveBuild<M> {
     let (world, source, edits) = (&*ctx.world, &*ctx.source, &*ctx.edits);
     // Lock nur kurz halten, damit Graben nicht auf Jobs wartet.
     let touched = edits.read().expect("Edits-Lock vergiftet").touches(position);
@@ -257,5 +259,5 @@ fn build_cave<M>(ctx: &Context<M>, position: IVec3, column: &ColumnData) -> Cave
         .map(|density| ChunkMesh::build(world, column, density))
         .filter(|mesh| !mesh.is_empty())
         .map(|mesh| (ctx.convert)(mesh));
-    CaveBuild { position, mesh, links, density: density.map(Arc::new) }
+    CaveBuild { position, mesh, links, density: density.map(Arc::new), epoch }
 }

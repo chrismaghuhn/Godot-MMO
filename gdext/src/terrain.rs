@@ -10,7 +10,7 @@
 //! Höhlen und Erze kommen vom lokalen Server (`server`, #56): Mit `server = "auto"` startet das
 //! Terrain ihn als Kindprozess (`server_binary`), mit `host:port` verbindet es sich, mit `off` gibt
 //! es nur die öffentliche Oberfläche. Ist der Server nicht da oder fällt er aus, läuft das Spiel
-//! ohne Höhlen weiter (Warnung).
+//! ohne Höhlen weiter (Warnung). Graben und Bauen: `dig.rs` (#14).
 //!
 //! Seed, Sichtradius, Fernterrain, `spawn_clearing` und Server gelten ab `_ready`; spätere Änderungen
 //! wirken nicht. Der Node darf verschoben, aber nicht gedreht oder skaliert werden (die Kamera wird
@@ -20,7 +20,7 @@
 #![allow(clippy::redundant_field_names)]
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use glam::{IVec2, IVec3, Vec3Swizzles};
@@ -29,11 +29,11 @@ use godot::classes::{INode3D, MeshInstance3D, Node3D, ProjectSettings, StandardM
 use godot::prelude::*;
 use terraforge_core::WorldGen;
 use terraforge_core::spawn::find_spawn;
-use terraforge_core::edits::WorldEdits;
 use terraforge_core::streaming::{Config, Event, FarKey, JobKind, PublicSurface, Streamer, UndergroundSource};
 use terraforge_protocol::NetworkSource;
 use terraforge_core::volume::CHUNK_SIZE;
 
+use crate::dig::Edits;
 use crate::mesh::MeshData;
 use crate::server::ServerProcess;
 use crate::trees::TreeAssets;
@@ -75,10 +75,11 @@ pub(crate) struct TerraforgeTerrain {
     #[export]
     server_binary: GString,
 
-    world: Option<Arc<WorldGen>>,
-    streamer: Option<Streamer<MeshData>>,
-    /// Verbindung zum Server, falls es eine gibt (für `failed`).
-    network: Option<Arc<NetworkSource>>,
+    pub(crate) world: Option<Arc<WorldGen>>,
+    pub(crate) streamer: Option<Streamer<MeshData>>,
+    /// Verbindung zum Server, falls es eine gibt.
+    pub(crate) network: Option<Arc<NetworkSource>>,
+    pub(crate) edits: Edits,
     /// Der selbst gestartete Server; endet mit dem Terrain.
     server_process: Option<ServerProcess>,
     /// Zustand für Overlay und Tests: "aus", "verbunden", "nicht erreichbar", "ausgefallen".
@@ -130,7 +131,7 @@ impl INode3D for TerraforgeTerrain {
         if self.spawn_clearing > 0.0 {
             config.clearing = Some((find_spawn(&world).xz(), self.spawn_clearing));
         }
-        let edits = Arc::new(RwLock::new(WorldEdits::default()));
+        let edits = Arc::clone(&self.edits.world);
         let source: Arc<dyn UndergroundSource> = match self.connect_server(seed) {
             Some(network) => network,
             None => Arc::new(PublicSurface),
@@ -161,6 +162,9 @@ impl INode3D for TerraforgeTerrain {
         let Some(streamer) = self.streamer.as_mut() else {
             return;
         };
+        if let Some(world) = &self.world {
+            streamer.mark_changed(self.edits.poll(self.network.as_deref(), &world.materials));
+        }
         streamer.update(glam::Vec3::new(position.x, position.y, position.z));
         for (kind, duration) in streamer.take_job_times() {
             let ms = duration.as_secs_f32() * 1000.0;
