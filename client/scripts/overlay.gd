@@ -74,5 +74,5 @@ func _process(delta: float) -> void:
 		+ "Gezeichnet: %d Objekte inkl. Schatten, %d Draw Calls   (Terrain-Meshes %d)\n" % [objects, draw_calls, s.get("meshes", 0)]
 		+ "X %7.1f   Y %6.1f   Z %7.1f   %s   Seed %d   [F3]\n" % [position.x, position.y, position.z, world.biome_at(position.x, position.z), world.seed()]
 		+ "%s   [WASD] laufen  [Leertaste] springen  [Shift] rennen  [F] Laufen/Fliegen  [Q/E] im Flug runter/hoch  [rechte Maustaste] umsehen\n" % _mode()
-		+ "Werkzeug %s   [Linksklick] graben  [B] bauen  [T] Werkzeug   %s" % [TerraforgeTerrain.tool_name(player.tool), player.edit_message])
+		+ "Werkzeug %s   [Linksklick] graben  [B] bauen  [X] fällen  [T] Werkzeug  [I] Inventar   %s" % [TerraforgeTerrain.tool_name(player.tool), player.edit_message])
 	label.add_theme_color_override("font_color", Color(0.55, 1.0, 0.55) if p95 <= 16.7 else (Color(1.0, 0.85, 0.35) if p95 <= 25.0 else Color(1.0, 0.45, 0.4)))

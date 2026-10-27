@@ -77,7 +77,7 @@ Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 - [x] Materialien mit Eigenschaften (Härte, Dichte, Reinheit, …), abgeleitet aus Ort/Gestein: #15
 - [ ] Biom-Varianten mit Daten (Bedingungen, Vegetation, Ressourcen), Wahl nach Bedingungen statt zufällig: #16
 - [ ] Erste 30-40 Biome vollständig ausbauen (D-009): #17
-- [ ] Abbauen + einfaches Inventar: #18
+- [x] Abbauen + einfaches Inventar: #18
 - [ ] Oberflächen-Hinweise auf Erze (vom Server gesteuert): #48
 - [x] Große Regionen (4-8 km) für ein BOTW-Gefühl (D-014): #50
 - [ ] Speichern von Weltänderungen (Delta auf den Seed): #19

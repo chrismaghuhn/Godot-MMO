@@ -833,3 +833,37 @@ Inventar-Nachrichten.
 - Vorgabe für #18 (Review-Fund): Die Werte gelten für natürlich gewachsenes Material. Gebautes
   behält die Werte des Items, sonst ließe sich Erz durch Ablegen in einer reichen Provinz veredeln.
 
+**Umsetzung Abbauen und Inventar (#18, 2026-10-27):**
+- `core/src/inventory.rs`: Ein Item ist Material mit Herkunft und Werten (`MinedSample` aus #15).
+  Gleiche Items stapeln: gleiches Material, gleiche Herkunft (undurchsichtige Provinz-Kennung bei
+  Erzen, sonst Region) und bei Erzen gleiche Reinheitsstufe (5 %). Die Werte eines Stapels sind der
+  nach Anzahl gewichtete Mittelwert, wie bei einem Haufen Erz. 40 Plätze, höchstens 999 je Stapel;
+  was keinen Platz findet, geht verloren und wird gemeldet.
+- `Holdings` (Inventar plus gebaute Voxel mit ihrem Item) im Core, genutzt vom Server und vom
+  Godot-Client ohne Server: Graben bewertet natürliches Material einmal je Material und Aktion am
+  Fundort, gebaute Voxel geben ihr Item zurück. Bauen verbraucht vom gewählten Platz, höchstens so
+  viele Voxel, wie dort liegen (`place_sphere` mit Grenze).
+- Protokoll 3: `Build { slot }`, `Fell`, Antworten `Dug { lost }` und `Felled`; nach dem `Welcome`
+  und nach jeder ausgeführten Aktion schickt der Server den ganzen Inventar-Stand. Der Server hat
+  vorerst ein Inventar (ein Spieler, D-021); gespeichert wird es mit #19.
+- Bäume fällen (im Godot-Client mit X): `vegetation::targeted_tree` sucht mit denselben Regeln wie
+  das Streaming (`column_trees`, aus dem Spalten-Streaming herausgezogen, der Viewer zeigt laut
+  Szenen-Hash dieselben Bäume) den vordersten Baum vor dem Gelände; der Server fällt ihn und legt
+  Holz ins Inventar (Kristallbäume geben Quarz), die Menge nach Größe. Neues Material „Holz“
+  (Kategorie `Wood`).
+- Godot: Zeile unten mit dem Baumaterial, I öffnet das Inventar mit den Werten der Stapel, 1-9 bzw.
+  Mausrad wählen den Platz.
+- Review-Funde behoben: Ein leerer Stapel ließ die späteren Plätze nachrücken, B baute dann
+  unbemerkt mit dem nächsten Material; jetzt feste Plätze, und `Build` nennt das erwartete
+  Material (der Server lehnt bei einem veralteten Stand ab, `Built` meldet, was gebaut wurde).
+  Gefällte Bäume kamen bei einem neu verbundenen Client nicht an (jetzt `FelledTrees` nach dem
+  `Welcome`). Der freie Kreis um den Spawn war dreimal festgelegt (Viewer, Godot-Export, Server);
+  jetzt überall `SPAWN_CLEARING`. Fällen bei vollem Inventar fällte den Baum und verlor das Holz
+  (jetzt abgelehnt); markiert wird die Spalte statt des Chunks am Fuß. Bewertet wird am Voxel nahe
+  der Mitte statt an einer Ecke der Kugel; der Inventar-Stand entsteht unter demselben Lock wie die
+  Aktion; Reinheit und Spurenelemente gehen gerundet zum Client. Die Inventarliste baute sich alle
+  0,1 s neu auf (Scrollen unmöglich); bei offenem Inventar grub ein Klick daneben.
+- Offen: Ohne Server prüft der Client beim Fällen weder Tempo noch „Auge im Fels“. Ein Panic mitten
+  im Bauen (`Failed`) führt das Inventar nicht nach. Gebaute Voxel (`Holdings.placed`) müssen mit
+  #19 gespeichert werden, sonst werden sie nach einem Neustart wie natürliche bewertet.
+

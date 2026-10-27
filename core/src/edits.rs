@@ -53,6 +53,8 @@ pub struct DigResult {
     pub too_hard: u32,
     /// Chunks, die neu vermascht werden müssen.
     pub affected: HashSet<IVec3>,
+    /// Die Voxel, die zu Luft wurden, mit ihrem bisherigen Material (für die Ausbeute, #18).
+    pub removed_at: Vec<(IVec3, MaterialId)>,
 }
 
 /// Ergebnis von `place_sphere`.
@@ -61,6 +63,8 @@ pub struct PlaceResult {
     /// Voxel, die von Luft zu fest wurden (≈ verbrauchtes Material in m³).
     pub placed: u32,
     pub affected: HashSet<IVec3>,
+    /// Die Voxel, die fest wurden (#18: sie behalten die Werte des verbauten Items).
+    pub placed_at: Vec<IVec3>,
 }
 
 /// Chunk, in dem ein Voxel lokal in `0..CHUNK_SIZE` liegt.
@@ -93,6 +97,11 @@ impl WorldEdits {
     /// Fällt einen Baum. `false`, wenn er schon gefällt war.
     pub fn fell_tree(&mut self, id: TreeId) -> bool {
         self.felled.insert(id)
+    }
+
+    /// Alle gefällten Bäume (z. B. für einen neu verbundenen Client).
+    pub fn felled_trees(&self) -> impl Iterator<Item = TreeId> + '_ {
+        self.felled.iter().copied()
     }
 
     pub fn is_felled(&self, id: TreeId) -> bool {
@@ -198,6 +207,7 @@ impl WorldEdits {
             let new = Voxel { density: carve, material: if carve <= 0.0 { MaterialId::AIR } else { old.material } };
             if carve <= 0.0 {
                 *result.removed.entry(old.material).or_insert(0) += 1;
+                result.removed_at.push((voxel, old.material));
             }
             self.set(voxel, new);
             result.affected.extend(chunks_containing(voxel));
@@ -205,20 +215,22 @@ impl WorldEdits {
         result
     }
 
-    /// Baut eine Kugel aus `material`. Bestehendes festes Material bleibt erhalten.
+    /// Baut eine Kugel aus `material`. Bestehendes festes Material bleibt erhalten. Höchstens
+    /// `limit` Voxel werden neu fest (so viel Material ist da); die übrigen bleiben Luft.
     pub fn place_sphere(
         &mut self,
         mut source: impl FnMut(IVec3) -> Voxel,
         center: Vec3,
         radius: f32,
         material: MaterialId,
+        limit: u32,
     ) -> PlaceResult {
         assert!(!material.is_air(), "Luft kann nicht gebaut werden");
         let mut result = PlaceResult::default();
         for voxel in sphere_voxels(center, radius + 1.0) {
             let old = self.current(voxel, &mut source);
             let fill = radius - voxel.as_vec3().distance(center);
-            if fill <= old.density {
+            if fill <= old.density || (fill > 0.0 && old.density <= 0.0 && result.placed >= limit) {
                 continue;
             }
             // Invariante auch im Speicher: Dichte <= 0 ⇔ Luft (Review-Fund; `get` ist öffentlich).
@@ -232,6 +244,7 @@ impl WorldEdits {
             let new = Voxel { density: fill, material: new_material };
             if fill > 0.0 && old.density <= 0.0 {
                 result.placed += 1;
+                result.placed_at.push(voxel);
             }
             self.set(voxel, new);
             result.affected.extend(chunks_containing(voxel));

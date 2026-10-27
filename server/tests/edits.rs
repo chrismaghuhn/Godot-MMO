@@ -1,8 +1,6 @@
 //! Graben und Bauen über eine echte TCP-Verbindung (#14): Der Server prüft, gräbt im echten
 //! Untergrund und schickt danach die geänderten Chunks.
 
-use std::net::TcpListener;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use glam::{IVec3, Vec3};
@@ -10,41 +8,13 @@ use terraforge_core::WorldGen;
 use terraforge_core::edits::action::{REACH, ray_hit};
 use terraforge_core::edits::owner_chunk;
 use terraforge_core::streaming::UndergroundSource;
-use terraforge_core::underground::{OreKind, SecretSeed};
+use terraforge_core::underground::OreKind;
 use terraforge_core::volume::{CHUNK_SIZE, ColumnData, SAMPLE_MIN};
-use terraforge_protocol::{EditAction, EditOutcome, NetworkSource};
-use terraforge_server::{ServerWorld, serve};
+use terraforge_protocol::{EditAction, EditOutcome};
 
-const SEED: u32 = 42;
+mod common;
 
-fn start_server() -> (Arc<ServerWorld>, NetworkSource) {
-    let world = Arc::new(ServerWorld::new(SEED, SecretSeed::insecure_dev_seed(SEED)));
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    let server = Arc::clone(&world);
-    std::thread::spawn(move || serve(listener, server, 2, false));
-    let source = NetworkSource::connect(("127.0.0.1", port), SEED, Duration::from_secs(5)).expect("Verbindung");
-    (world, source)
-}
-
-/// Schickt eine Aktion und wartet auf die Antwort. Wartet vorher das Mindest-Intervall ab.
-fn edit(source: &NetworkSource, eye: Vec3, direction: Vec3, action: EditAction) -> EditOutcome {
-    std::thread::sleep(Duration::from_millis(110));
-    let request = source.send_edit(eye.to_array(), direction.to_array(), action).expect("gesendet");
-    let start = Instant::now();
-    loop {
-        if let Some((_, outcome)) = source.take_edits().into_iter().find(|(r, _)| *r == request) {
-            return outcome;
-        }
-        assert!(start.elapsed() < Duration::from_secs(10), "keine Antwort");
-        std::thread::sleep(Duration::from_millis(5));
-    }
-}
-
-/// Auge 1,65 m über der Oberfläche an (x, z).
-fn eye(world: &WorldGen, x: f32, z: f32) -> Vec3 {
-    Vec3::new(x, world.column_height(x, z) + 1.65, z)
-}
+use common::{SEED, edit, eye, start_server};
 
 /// Graben schickt die Chunks zum Neuladen; danach kommt über das Netz der neue Stand an.
 #[test]
@@ -54,7 +24,7 @@ fn digging_over_the_network_changes_the_chunks() {
     let eye = eye(&world, 12.0, -7.0);
     let down = Vec3::new(0.3, -1.0, 0.2).normalize();
     let (hit, _) = ray_hit(eye, down, REACH, |v| server.voxel(v).density > 0.0).expect("Boden in Reichweite");
-    let EditOutcome::Dug { removed, too_hard, chunks } = edit(&source, eye, down, EditAction::Dig { tool: 3 }) else {
+    let EditOutcome::Dug { removed, too_hard, chunks, .. } = edit(&source, eye, down, EditAction::Dig { tool: 3 }) else {
         panic!("nicht gegraben");
     };
     assert!(!removed.is_empty() && too_hard == 0, "Ausbeute {removed:?}, zu hart {too_hard}");
@@ -82,7 +52,7 @@ fn the_server_refuses_invalid_edits() {
     assert_eq!(refused(edit(&source, eye, Vec3::Y, EditAction::Dig { tool: 3 })), "kein Ziel in Reichweite");
     assert_eq!(refused(edit(&source, eye - Vec3::Y * 10.0, Vec3::X, EditAction::Dig { tool: 3 })), "Auge im Fels");
     assert_eq!(refused(edit(&source, eye, Vec3::new(3e38, 0.0, 0.0), EditAction::Dig { tool: 3 })), "ungültige Position oder Richtung");
-    assert_eq!(refused(edit(&source, eye, -Vec3::Y, EditAction::Build)), "zu nah am Spieler");
+    assert_eq!(refused(edit(&source, eye, -Vec3::Y, EditAction::Build { slot: 0, material: 2 })), "nichts zum Bauen auf diesem Platz");
     assert_eq!(refused(edit(&source, eye, -Vec3::Y, EditAction::Dig { tool: 9 })), "unbekanntes Werkzeug");
     assert_eq!(refused(edit(&source, eye, Vec3::ZERO, EditAction::Dig { tool: 0 })), "ungültige Position oder Richtung");
     assert_eq!(refused(edit(&source, Vec3::new(f32::NAN, 0.0, 0.0), -Vec3::Y, EditAction::Dig { tool: 0 })), "ungültige Position oder Richtung");

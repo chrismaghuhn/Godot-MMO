@@ -3,6 +3,7 @@
 //! - `messages`: was Client und Server einander schicken
 //! - `chunk`:    Chunks als Unterschied zur öffentlichen Oberfläche
 //! - `framing`:  Nachrichten mit Längen-Präfix über einen Byte-Strom (TCP)
+//! - `inventory`: Inventar-Stapel für die Anzeige im Client (#18)
 //! - `client`:   `NetworkSource`, holt Untergrund-Chunks für den Streamer vom Server
 //!
 //! Transport vorerst TCP auf localhost; die endgültige Netzwerk-Bibliothek kommt mit Phase 6
@@ -12,7 +13,8 @@
 pub mod chunk;
 pub mod client;
 pub mod framing;
+pub mod inventory;
 pub mod messages;
 
 pub use client::NetworkSource;
-pub use messages::{ChunkKind, ChunkReply, ClientMessage, EditAction, EditOutcome, ServerMessage, VERSION};
+pub use messages::{ChunkKind, ChunkReply, ClientMessage, EditAction, EditOutcome, ServerMessage, StackInfo, VERSION};

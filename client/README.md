@@ -64,11 +64,15 @@ vom Server. Start am selben Spawnpunkt wie im Viewer.
   zum Umsehen, F3 Overlay (Frametimes, Streaming, gezeichnete Objekte, Position, Biom). Bäume
   haben noch keine Kollision (#58).
 - **Graben und Bauen** (#14, wie im Viewer): Linksklick gräbt eine Kugel (2 m) unter dem
-  Fadenkreuz, B baut Erde (1,5 m), T wechselt das Werkzeug (Härte-Stufen, echte Werkzeuge mit
+  Fadenkreuz, B baut (1,5 m, aus dem Inventar), T wechselt das Werkzeug (Härte-Stufen, echte Werkzeuge mit
   #21). Reichweite 8 m. Mit Server schickt der Client nur Blick und Aktion; der Server bestimmt das
   Ziel im echten Untergrund, prüft Werkzeug, Tempo (höchstens alle 0,1 s) und ob man sich selbst
   einbaut, und schickt die geänderten Chunks. Ohne Server gräbt der Client in der öffentlichen
   Oberfläche. Das Ergebnis (Ausbeute je Material) steht im Overlay.
+- **Inventar und Fällen** (#18): Die Ausbeute kommt ins Inventar (geführt vom Server), mit Werten
+  je Stapel (Härte, Dichte, Zähigkeit, Wärmeleitfähigkeit, bei Erzen Reinheit und Spurenelemente).
+  I öffnet die Liste, 1-9 oder Mausrad wählen den Platz, aus dem B baut. X fällt den anvisierten
+  Baum (Holz ins Inventar).
 - **Umgebungsvariablen** (wie im Viewer): `TERRAFORGE_SEED`, `TERRAFORGE_VIEW_RADIUS`,
   `TERRAFORGE_FAR=0` (ohne Fernterrain), `TERRAFORGE_FLY` (fliegend starten), `TERRAFORGE_CAM_Y`
   (fliegend höher starten), `TERRAFORGE_PITCH`/`TERRAFORGE_YAW`
@@ -90,7 +94,8 @@ startet Godot headless mit [`tests/gdext_smoke.gd`](tests/gdext_smoke.gd) (Höhe
 mit `terraforge-core`) und [`tests/terrain_smoke.gd`](tests/terrain_smoke.gd) (Streaming: Spalten,
 Meshes, Entfernen beim Weiterfliegen, Höhlen vom Server), [`tests/player_smoke.gd`](tests/player_smoke.gd)
 (Laufen und Springen) und [`tests/dig_smoke.gd`](tests/dig_smoke.gd) (Graben und Bauen mit und ohne
-Server, neuer Stand auch in der Kollision). Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
+Server, neuer Stand auch in der Kollision, Inventar) und [`tests/fell_smoke.gd`](tests/fell_smoke.gd)
+(Bäume fällen). Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
 gebaute Bibliothek lädt; die des Editors bleibt unberührt. Ohne Godot (`GODOT` oder `godot` im
 `PATH`) schlägt er fehl. Außerdem prüft `gdext/tests/lockfiles.rs`, dass `gdext/Cargo.lock` für
 alle Abhängigkeiten des Cores dieselben Versionen hat wie das Haupt-`Cargo.lock` (sonst erzeugten

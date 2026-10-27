@@ -296,6 +296,12 @@ impl<M: Send + 'static> Streamer<M> {
         self.dirty.mark(chunks, &self.cache);
     }
 
+    /// Baut eine geladene Spalte neu (z. B. nach dem Fällen eines Baums, #18); nicht geladene
+    /// bekommen den Stand ohnehin beim Laden.
+    pub fn mark_column_changed(&mut self, column: IVec2) {
+        self.dirty.columns.insert(column);
+    }
+
     /// Cave Culling ein- oder ausschalten (z. B. aus im Röntgenmodus).
     pub fn set_culling(&mut self, enabled: bool) {
         self.culling = enabled;

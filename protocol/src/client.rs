@@ -26,19 +26,23 @@ use terraforge_core::volume::{ColumnData, DensityChunk};
 
 use crate::framing::{read_message, write_message};
 use crate::chunk::apply;
-use crate::messages::{ChunkKind, ChunkReply, ClientMessage, EditAction, EditOutcome, ServerMessage, VERSION};
+use crate::messages::{ChunkKind, ChunkReply, ClientMessage, EditAction, EditOutcome, ServerMessage, StackInfo, VERSION};
 
 /// So lange wartet ein Worker höchstens auf einen Chunk.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 type Pending = Arc<Mutex<HashMap<u64, Sender<ChunkReply>>>>;
 type Edited = Arc<Mutex<Vec<(u64, EditOutcome)>>>;
+type Inventory = Arc<Mutex<Option<Vec<StackInfo>>>>;
+type Felled = Arc<Mutex<Vec<(i32, i32, u16)>>>;
 
 pub struct NetworkSource {
     lowest_cave_chunk: i32,
     writer: Mutex<TcpStream>,
     pending: Pending,
     edited: Edited,
+    inventory: Inventory,
+    felled: Felled,
     next_request: AtomicU64,
     failed: Arc<AtomicBool>,
     reader: Option<JoinHandle<()>>,
@@ -63,10 +67,12 @@ impl NetworkSource {
 
         let pending: Pending = Arc::default();
         let edited: Edited = Arc::default();
+        let inventory: Inventory = Arc::default();
+        let felled: Felled = Arc::default();
         let failed = Arc::new(AtomicBool::new(false));
         let mut reader_stream = stream.try_clone()?;
         let reader = {
-            let (pending, edited, failed) = (Arc::clone(&pending), Arc::clone(&edited), Arc::clone(&failed));
+            let (pending, edited, inventory, felled, failed) = (Arc::clone(&pending), Arc::clone(&edited), Arc::clone(&inventory), Arc::clone(&felled), Arc::clone(&failed));
             std::thread::Builder::new().name("terraforge-net".into()).spawn(move || {
                 loop {
                     match read_message::<ServerMessage>(&mut reader_stream) {
@@ -78,6 +84,12 @@ impl NetworkSource {
                         Ok(Some(ServerMessage::Edited { request, outcome })) => {
                             edited.lock().unwrap_or_else(PoisonError::into_inner).push((request, outcome));
                         }
+                        Ok(Some(ServerMessage::Inventory { stacks })) => {
+                            *inventory.lock().unwrap_or_else(PoisonError::into_inner) = Some(stacks);
+                        }
+                        Ok(Some(ServerMessage::FelledTrees { trees })) => {
+                            felled.lock().unwrap_or_else(PoisonError::into_inner).extend(trees);
+                        }
                         Ok(Some(other)) => eprintln!("terraforge: unerwartete Nachricht vom Server: {other:?}"),
                         Ok(None) | Err(_) => break,
                     }
@@ -88,7 +100,7 @@ impl NetworkSource {
                 pending.lock().unwrap_or_else(PoisonError::into_inner).clear();
             })?
         };
-        Ok(Self { lowest_cave_chunk, writer: Mutex::new(stream), pending, edited, next_request: AtomicU64::new(0), failed, reader: Some(reader) })
+        Ok(Self { lowest_cave_chunk, writer: Mutex::new(stream), pending, edited, inventory, felled, next_request: AtomicU64::new(0), failed, reader: Some(reader) })
     }
 
     /// Ob die Verbindung ausgefallen ist (ab dann nur noch öffentliche Oberfläche).
@@ -116,6 +128,16 @@ impl NetworkSource {
     /// Antworten auf `send_edit` seit dem letzten Aufruf, in der Reihenfolge des Eintreffens.
     pub fn take_edits(&self) -> Vec<(u64, EditOutcome)> {
         std::mem::take(&mut *self.edited.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// Der neueste Inventar-Stand, falls seit dem letzten Aufruf einer kam.
+    pub fn take_inventory(&self) -> Option<Vec<StackInfo>> {
+        self.inventory.lock().unwrap_or_else(PoisonError::into_inner).take()
+    }
+
+    /// Gefällte Bäume, die der Server seit dem letzten Aufruf gemeldet hat (nach der Anmeldung).
+    pub fn take_felled(&self) -> Vec<(i32, i32, u16)> {
+        std::mem::take(&mut *self.felled.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
     /// Fragt einen Chunk an und wartet auf die Antwort; `None`, wenn keine kommt.

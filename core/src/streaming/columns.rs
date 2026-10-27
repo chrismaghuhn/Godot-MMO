@@ -3,14 +3,14 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use glam::{IVec2, IVec3, Vec2, Vec3, Vec3Swizzles};
+use glam::{IVec2, IVec3, Vec3Swizzles};
 
 use super::jobs::{JobKind, Ticket};
 use super::wanted::{camera_chunk, column_distance, column_within, columns_in_view};
 use super::{Built, Context, Event, Frame};
 use crate::mesh::ChunkMesh;
 use crate::occlusion::{FaceLinks, face_links};
-use crate::vegetation::{TreePlacement, plan_trees, settle_tree};
+use crate::vegetation::{TreePlacement, column_trees};
 use crate::volume::{self, ChunkKind, ColumnData, DensityChunk};
 
 /// Ergebnis eines Spalten-Jobs: alle 3D-Chunks mit Oberfläche in dieser Spalte.
@@ -209,18 +209,9 @@ fn build_column<M>(ctx: &Context<M>, position: IVec2, cached: Option<Arc<ColumnD
         fields.insert(chunk_y, density);
     }
 
-    let size = volume::CHUNK_SIZE as f32;
-    let mut trees = plan_trees(world.cfg.seed, world.cfg.sea_level, position.x, position.y, column.heights(), &column.biomes, &column.temperatures);
-    if let Some((center, radius)) = ctx.config.clearing {
-        trees.retain(|tree| {
-            let world_xz = Vec2::new(position.x as f32 * size + tree.position.x, position.y as f32 * size + tree.position.z);
-            (world_xz - center).length() > radius
-        });
-    }
     // Bäume auf die echte Oberfläche setzen (Höhleneingänge, Gegrabenes, Gebautes) und gefällte
     // weglassen. Fehlende Dichtefelder (meist massiv) werden nur bei Bedarf gebaut.
-    let origin = Vec3::new(position.x as f32 * size, 0.0, position.y as f32 * size).as_ivec3();
-    let mut density = |voxel: IVec3| {
+    let density = |voxel: IVec3| {
         let chunk_y = voxel.y.div_euclid(volume::CHUNK_SIZE);
         let chunk = fields.entry(chunk_y).or_insert_with(|| {
             let mut chunk = source.materials_chunk(world, &column, chunk_y);
@@ -230,27 +221,12 @@ fn build_column<M>(ctx: &Context<M>, position: IVec2, cached: Option<Arc<ColumnD
         let o = chunk.origin();
         chunk.get(voxel.x - o.x, voxel.y - o.y, voxel.z - o.z)
     };
+    let mut trees = column_trees(world, &column, ctx.config.clearing, density);
     // Gefällte Bäume einmal pro Spalte abfragen (ein konsistenter Stand).
-    let felled: Vec<bool> = {
+    {
         let edits = edits.read().expect("Edits-Lock vergiftet");
-        trees.iter().map(|tree| edits.is_felled(tree.id)).collect()
-    };
-    let mut felled = felled.into_iter();
-    trees.retain_mut(|tree| {
-        if felled.next().unwrap_or(false) {
-            return false;
-        }
-        // Lokale Koordinaten: Voxel x/z liegen im eigenen Chunk (0..=32); geplante Höhe an den
-        // Ecken aus der Spalte.
-        let plan = |x: i32, z: i32| column.height(x, z);
-        match settle_tree(tree.position, plan, |v| density(v + origin)) {
-            Some(y) => {
-                tree.position.y = y;
-                true
-            }
-            None => false,
-        }
-    });
+        trees.retain(|tree| !edits.is_felled(tree.id));
+    }
     let fields = fields.into_values().map(Arc::new).collect();
     ColumnBuild { position, column, meshes, links, trees, fields, rebuild, epoch }
 }

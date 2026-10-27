@@ -26,6 +26,8 @@ fn serve_client(mut stream: TcpStream, world: &Arc<ServerWorld>, workers: &Worke
         Some(ClientMessage::Hello { version, seed }) if version == VERSION && seed == world.seed() => {
             let welcome = ServerMessage::Welcome { version: VERSION, lowest_cave_chunk: world.lowest_cave_chunk() };
             write_message(&mut stream, &welcome)?;
+            write_message(&mut stream, &ServerMessage::Inventory { stacks: world.inventory_view() })?;
+            write_message(&mut stream, &ServerMessage::FelledTrees { trees: world.felled_trees() })?;
         }
         Some(ClientMessage::Hello { version, seed }) => {
             let reason = format!("Client: Protokoll {version}, Seed {seed}; Server: Protokoll {VERSION}, Seed {}", world.seed());
@@ -61,15 +63,20 @@ fn serve_client(mut stream: TcpStream, world: &Arc<ServerWorld>, workers: &Worke
                 let (world, writer) = (Arc::clone(world), Arc::clone(&writer));
                 let checked = crate::edit::check(eye, direction, action, &mut last_edit);
                 workers.run(move || {
-                    let outcome = match checked {
+                    let (outcome, stacks) = match checked {
                         Ok((eye, direction, action)) => catch_unwind(AssertUnwindSafe(|| world.edit(eye, direction, action))).unwrap_or_else(|_| {
                             eprintln!("terraforge-server: Fehler beim Graben/Bauen bei {eye}");
-                            EditOutcome::Refused { reason: "Fehler auf dem Server".into() }
+                            (EditOutcome::Refused { reason: "Fehler auf dem Server".into() }, Vec::new())
                         }),
-                        Err(reason) => EditOutcome::Refused { reason },
+                        Err(reason) => (EditOutcome::Refused { reason }, Vec::new()),
                     };
-                    let message = ServerMessage::Edited { request, outcome };
-                    write_message(&mut *writer.lock().unwrap_or_else(PoisonError::into_inner), &message).ok();
+                    // Nach jeder ausgeführten Aktion kann sich das Inventar geändert haben (#18).
+                    let inventory = (!matches!(outcome, EditOutcome::Refused { .. })).then_some(ServerMessage::Inventory { stacks });
+                    let mut writer = writer.lock().unwrap_or_else(PoisonError::into_inner);
+                    write_message(&mut *writer, &ServerMessage::Edited { request, outcome }).ok();
+                    if let Some(inventory) = inventory {
+                        write_message(&mut *writer, &inventory).ok();
+                    }
                 });
             }
             ClientMessage::Hello { .. } => {}

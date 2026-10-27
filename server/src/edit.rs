@@ -22,7 +22,8 @@ use terraforge_core::edits::action::{self, Action, DIG_RADIUS, Outcome, REACH, T
 use terraforge_core::edits::{Voxel, owner_chunk};
 use terraforge_core::movement::Settings;
 use terraforge_core::volume::{CHUNK_SIZE, DensityChunk};
-use terraforge_protocol::{EditAction, EditOutcome};
+use terraforge_core::MaterialId;
+use terraforge_protocol::{EditAction, EditOutcome, StackInfo};
 
 use crate::ServerWorld;
 use crate::world::in_world;
@@ -30,9 +31,18 @@ use crate::world::in_world;
 /// Höchstens eine Änderung pro Zeitraum und Verbindung.
 pub(crate) const MIN_INTERVAL: Duration = Duration::from_millis(100);
 
+/// Eine geprüfte Anfrage; was gebaut wird, entscheidet erst `edit` mit dem Inventar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Request {
+    Dig { tool: usize },
+    /// Platz und das Material, das der Client dort sieht.
+    Build { slot: usize, material: MaterialId },
+    Fell,
+}
+
 /// Prüft eine Anfrage, bevor sie an die Worker geht (Format, Tempo). Gibt die Aktion zurück oder
 /// den Grund der Ablehnung.
-pub(crate) fn check(eye: [f32; 3], direction: [f32; 3], action: EditAction, last: &mut Option<Instant>) -> Result<(Vec3, Vec3, Action), String> {
+pub(crate) fn check(eye: [f32; 3], direction: [f32; 3], action: EditAction, last: &mut Option<Instant>) -> Result<(Vec3, Vec3, Request), String> {
     let invalid = || "ungültige Position oder Richtung".to_string();
     let eye = Vec3::from_array(eye);
     // `try_normalize`: Sehr lange Vektoren ergäben mit `normalize` den Nullvektor (Review-Fund).
@@ -44,9 +54,10 @@ pub(crate) fn check(eye: [f32; 3], direction: [f32; 3], action: EditAction, last
         return Err("außerhalb der Welt".into());
     }
     let action = match action {
-        EditAction::Dig { tool } if usize::from(tool) < TOOLS.len() => Action::Dig { tool: tool.into() },
+        EditAction::Dig { tool } if usize::from(tool) < TOOLS.len() => Request::Dig { tool: tool.into() },
         EditAction::Dig { .. } => return Err("unbekanntes Werkzeug".into()),
-        EditAction::Build => Action::Build,
+        EditAction::Build { slot, material } => Request::Build { slot: slot.into(), material: MaterialId(material) },
+        EditAction::Fell => Request::Fell,
     };
     let now = Instant::now();
     if last.is_some_and(|last| now.duration_since(last) < MIN_INTERVAL) {
@@ -56,28 +67,41 @@ pub(crate) fn check(eye: [f32; 3], direction: [f32; 3], action: EditAction, last
     Ok((eye, direction, action))
 }
 
-fn refused(reason: &str) -> EditOutcome {
+pub(crate) fn refused(reason: &str) -> EditOutcome {
     EditOutcome::Refused { reason: reason.into() }
 }
 
 impl ServerWorld {
     /// Führt eine geprüfte Aktion aus. `Edited` mit den Chunks, die der Client neu anfragen muss.
+    /// Graben legt die Ausbeute ins Inventar, Bauen verbraucht vom gewählten Platz (#18).
     ///
     /// Aktionen laufen nacheinander (`edit_lock`): Das Ziel gilt noch, wenn die Änderung angewendet
-    /// wird.
-    pub fn edit(&self, eye: Vec3, direction: Vec3, action: Action) -> EditOutcome {
+    /// wird, und das Inventar ändert sich nur hier. Gibt dazu den Inventar-Stand direkt nach der
+    /// Aktion zurück (unter demselben Lock, damit kein älterer Stand zuletzt beim Client ankommt).
+    pub fn edit(&self, eye: Vec3, direction: Vec3, request: Request) -> (EditOutcome, Vec<StackInfo>) {
         let _serial = self.edit_lock.lock().unwrap_or_else(PoisonError::into_inner);
-        // Nur ablehnen, wenn die ganze Zelle um das Auge fest ist: Der nächste Voxel allein kann
-        // schon in der Wand liegen, wenn der Spieler dicht davor steht (Review-Fund: ~5 % der
-        // Aktionen an Wänden abgelehnt).
-        let cell = eye.floor().as_ivec3();
-        if (0..8).all(|i| self.voxel(cell + IVec3::new(i & 1, (i >> 1) & 1, (i >> 2) & 1)).density > 0.0) {
+        let outcome = self.apply_edit(eye, direction, request);
+        (outcome, self.inventory_view())
+    }
+
+    fn apply_edit(&self, eye: Vec3, direction: Vec3, request: Request) -> EditOutcome {
+        if self.eye_in_rock(eye) {
             return refused("Auge im Fels");
         }
+        let action = match request {
+            Request::Fell => return self.fell(eye, direction),
+            Request::Dig { tool } => Action::Dig { tool },
+            Request::Build { slot, material } => match self.build_material(slot) {
+                Some((found, limit)) if found == material => Action::Build { material, limit },
+                // Der Client hatte einen älteren Stand (Review-Fund: sonst baute er unbemerkt anderes).
+                Some(_) => return refused("auf diesem Platz liegt inzwischen etwas anderes"),
+                None => return refused("nichts zum Bauen auf diesem Platz"),
+            },
+        };
         let Some(center) = action::target(action, eye, direction, REACH, |voxel| self.voxel(voxel).density > 0.0) else {
             return refused("kein Ziel in Reichweite");
         };
-        if action == Action::Build && action::hits_body(center, eye, &Settings::default()) {
+        if action.is_build() && action::hits_body(center, eye, &Settings::default()) {
             return refused("zu nah am Spieler");
         }
         let (min, max) = action::voxel_bounds(center, action);
@@ -118,17 +142,30 @@ impl ServerWorld {
         };
         let chunks: Vec<[i32; 3]> =
             if outcome.changed().is_empty() { Vec::new() } else { action::affected_chunks(center, action).iter().map(IVec3::to_array).collect() };
-        match outcome {
-            Outcome::Dug(result) => EditOutcome::Dug {
+        match (outcome, request) {
+            (Outcome::Dug(result), _) => EditOutcome::Dug {
+                lost: self.store_yield(center.round().as_ivec3(), &result.removed_at),
                 removed: result.removed.into_iter().map(|(material, count)| (material.0, count)).collect(),
                 too_hard: match action {
                     Action::Dig { tool } => self.exposed_too_hard(center, TOOLS[tool].max_hardness),
-                    Action::Build => 0,
+                    Action::Build { .. } => 0,
                 },
                 chunks,
             },
-            Outcome::Built(result) => EditOutcome::Built { placed: result.placed, chunks },
+            (Outcome::Built(result), Request::Build { slot, material }) => {
+                self.consume(slot, &result.placed_at);
+                EditOutcome::Built { placed: result.placed, material: material.0, chunks }
+            }
+            (Outcome::Built(result), _) => EditOutcome::Built { placed: result.placed, material: 0, chunks },
         }
+    }
+
+    /// Nur wenn die ganze Zelle um das Auge fest ist: Der nächste Voxel allein kann schon in der
+    /// Wand liegen, wenn der Spieler dicht davor steht (Review-Fund: ~5 % der Aktionen an Wänden
+    /// abgelehnt).
+    pub(crate) fn eye_in_rock(&self, eye: Vec3) -> bool {
+        let cell = eye.floor().as_ivec3();
+        (0..8).all(|i| self.voxel(cell + IVec3::new(i & 1, (i >> 1) & 1, (i >> 2) & 1)).density > 0.0)
     }
 
     /// Feste Voxel in der Grab-Kugel, die zu hart waren und an Luft grenzen (26 Nachbarn). Nur die

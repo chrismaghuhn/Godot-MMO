@@ -3,6 +3,8 @@
 use glam::{IVec3, Vec3};
 
 use super::*;
+
+const DIRT: Action = Action::Build { material: MaterialId::DIRT, limit: u32::MAX };
 use crate::edits::chunks_containing;
 use crate::volume::ColumnData;
 use crate::world::WorldGen;
@@ -30,7 +32,7 @@ fn the_ray_finds_the_ground_and_building_sits_in_front_of_it() {
     let down = Vec3::new(0.0, -1.0, 0.6).normalize();
     let dig = target(Action::Dig { tool: 0 }, eye, down, REACH, |v| source(v).density > 0.0).expect("Boden in Reichweite");
     assert!(source(dig.round().as_ivec3()).density > 0.0);
-    let build = target(Action::Build, eye, down, REACH, |v| source(v).density > 0.0).expect("Boden in Reichweite");
+    let build = target(DIRT, eye, down, REACH, |v| source(v).density > 0.0).expect("Boden in Reichweite");
     assert!((build - (dig - down * BUILD_RADIUS * 0.8)).length() < 1e-4);
     // Nach oben ist nichts in Reichweite.
     assert_eq!(target(Action::Dig { tool: 0 }, eye, Vec3::Y, REACH, |v| source(v).density > 0.0), None);
@@ -53,7 +55,7 @@ fn affected_chunks_cover_every_changed_sample_and_its_neighbours() {
     let world = WorldGen::new(42);
     let source = public(&world);
     for center in [Vec3::new(31.6, 0.0, -0.4), Vec3::new(0.2, 31.7, 64.5), Vec3::new(-33.0, -1.2, 15.0)] {
-        for action in [Action::Dig { tool: 3 }, Action::Build] {
+        for action in [Action::Dig { tool: 3 }, DIRT] {
             let center = Vec3::new(center.x, world.column_height(center.x, center.z) + center.y.fract(), center.z);
             let mut edits = WorldEdits::default();
             let outcome = apply(&mut edits, &world.materials, &source, center, action);

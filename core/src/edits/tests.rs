@@ -193,6 +193,22 @@ fn digging_inside_solid_rock_creates_a_mesh() {
     assert!(inward * 10 >= mesh.positions.len() * 9, "Normalen zeigen nicht in den Hohlraum");
 }
 
+/// Mit Grenze werden höchstens so viele Voxel fest, wie Material da ist (#18); gemeldet werden
+/// genau diese, und nur sie sind fest.
+#[test]
+fn placing_stops_at_the_limit() {
+    let world = WorldGen::new(42);
+    let mut source = Source::new(&world);
+    let mut edits = WorldEdits::default();
+    let center = Vec3::new(50.0, world.column_height(50.0, 50.0) + 10.0, 50.0);
+    let placed = edits.place_sphere(|v| source.voxel(v), center, 2.5, MaterialId::GRANITE, 3);
+    assert_eq!(placed.placed, 3);
+    assert_eq!(placed.placed_at.len(), 3);
+    let solid: Vec<IVec3> = sphere_voxels(center, 3.5).filter(|&v| edits.get(v).is_some_and(|value| value.density > 0.0)).collect();
+    assert_eq!(solid.len(), 3);
+    assert!(solid.iter().all(|v| placed.placed_at.contains(v)));
+}
+
 #[test]
 fn placing_fills_air_only_and_digging_it_again_returns_the_material() {
     let world = WorldGen::new(42);
@@ -200,7 +216,7 @@ fn placing_fills_air_only_and_digging_it_again_returns_the_material() {
     let mut edits = WorldEdits::default();
     // In der Luft 10 m über dem Boden.
     let center = Vec3::new(50.0, world.column_height(50.0, 50.0) + 10.0, 50.0);
-    let placed = edits.place_sphere(|v| source.voxel(v), center, 2.5, MaterialId::GRANITE);
+    let placed = edits.place_sphere(|v| source.voxel(v), center, 2.5, MaterialId::GRANITE, u32::MAX);
     assert!(placed.placed > 40, "zu wenig gebaut: {}", placed.placed);
     for voxel in sphere_voxels(center, 2.5) {
         let value = edits.get(voxel).unwrap();
@@ -243,12 +259,12 @@ fn stored_voxels_keep_the_air_invariant() {
     let mut edits = WorldEdits::default();
     let air = Vec::from([Vec3::new(5.0, world.column_height(5.0, 5.0) + 8.0, 5.0)]);
     for center in air {
-        edits.place_sphere(|v| source.voxel(v), center, 1.5, MaterialId::DIRT);
+        edits.place_sphere(|v| source.voxel(v), center, 1.5, MaterialId::DIRT, u32::MAX);
         edits.dig_sphere(&world.materials, |v| source.voxel(v), center + Vec3::X, 1.0, 10.0);
     }
     let surface = Vec3::new(-20.0, world.column_height(-20.0, 30.0), 30.0);
     edits.dig_sphere(&world.materials, |v| source.voxel(v), surface, 2.5, 10.0);
-    edits.place_sphere(|v| source.voxel(v), surface, 1.8, MaterialId::SAND);
+    edits.place_sphere(|v| source.voxel(v), surface, 1.8, MaterialId::SAND, u32::MAX);
     let mut checked = 0;
     for owner in edits.by_owner.values() {
         for value in owner.values() {
@@ -332,7 +348,7 @@ fn digging_under_or_burying_a_tree_removes_it() {
     assert_eq!(settle_tree(root, plan, |v| density(&mut source, &dug, v)), None, "Baum über gegrabenem Loch");
 
     let mut buried = WorldEdits::default();
-    buried.place_sphere(|v| source.voxel(v), root + Vec3::Y * 1.0, 2.5, MaterialId::DIRT);
+    buried.place_sphere(|v| source.voxel(v), root + Vec3::Y * 1.0, 2.5, MaterialId::DIRT, u32::MAX);
     assert_eq!(settle_tree(root, plan, |v| density(&mut source, &buried, v)), None, "zugeschütteter Baum");
 
     let mut beside = WorldEdits::default();

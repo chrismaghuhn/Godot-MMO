@@ -36,16 +36,20 @@ const RAY_STEP: f32 = 0.25;
 pub enum Action {
     /// Graben mit `TOOLS[tool]`.
     Dig { tool: usize },
-    /// Erde bauen (Material aus dem Inventar später, #18).
-    Build,
+    /// `material` bauen, höchstens `limit` Voxel (so viel ist im Inventar, #18).
+    Build { material: MaterialId, limit: u32 },
 }
 
 impl Action {
     pub fn radius(self) -> f32 {
         match self {
             Action::Dig { .. } => DIG_RADIUS,
-            Action::Build => BUILD_RADIUS,
+            Action::Build { .. } => BUILD_RADIUS,
         }
+    }
+
+    pub fn is_build(self) -> bool {
+        matches!(self, Action::Build { .. })
     }
 }
 
@@ -84,7 +88,7 @@ pub fn target(action: Action, origin: Vec3, direction: Vec3, reach: f32, solid: 
     let (hit, _) = ray_hit(origin, direction, reach, solid)?;
     Some(match action {
         Action::Dig { .. } => hit,
-        Action::Build => hit - direction * (BUILD_RADIUS * 0.8),
+        Action::Build { .. } => hit - direction * (BUILD_RADIUS * 0.8),
     })
 }
 
@@ -105,7 +109,7 @@ pub fn hits_body(center: Vec3, eye: Vec3, body: &Settings) -> bool {
 pub fn apply(edits: &mut WorldEdits, materials: &MaterialRegistry, source: impl FnMut(IVec3) -> Voxel, center: Vec3, action: Action) -> Outcome {
     match action {
         Action::Dig { tool } => Outcome::Dug(edits.dig_sphere(materials, source, center, DIG_RADIUS, TOOLS[tool].max_hardness)),
-        Action::Build => Outcome::Built(edits.place_sphere(source, center, BUILD_RADIUS, MaterialId::DIRT)),
+        Action::Build { material, limit } => Outcome::Built(edits.place_sphere(source, center, BUILD_RADIUS, material, limit)),
     }
 }
 
@@ -148,13 +152,19 @@ pub fn summary(outcome: &Outcome, materials: &MaterialRegistry, action: Action) 
             if result.too_hard > 0 {
                 let tool = match action {
                     Action::Dig { tool } => TOOLS.get(tool).map_or("?", |t| t.name),
-                    Action::Build => "?",
+                    Action::Build { .. } => "?",
                 };
                 parts.push(format!("{} zu hart für {tool}", result.too_hard));
             }
             if parts.is_empty() { "nichts abgebaut".into() } else { parts.join(", ") }
         }
-        Outcome::Built(result) => format!("{} Erde gebaut", result.placed),
+        Outcome::Built(result) => {
+            let name = match action {
+                Action::Build { material, .. } => materials.get(material).map_or("?", |m| m.name.as_str()),
+                Action::Dig { .. } => "?",
+            };
+            format!("{} {name} gebaut", result.placed)
+        }
     }
 }
 

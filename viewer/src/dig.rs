@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use terraforge_core::{
+    MaterialId,
     edits::action::{self, Action, Outcome, TOOLS},
     edits::{Voxel, WorldEdits, owner_chunk},
     volume::{CHUNK_SIZE, ColumnData, DensityChunk},
@@ -152,7 +153,7 @@ fn dig_input(
     // laufende Jobs nicht blockiert werden.
     let origin = transform.translation;
     let direction = transform.forward().as_vec3();
-    let action = if dig { Action::Dig { tool: status.tool } } else { Action::Build };
+    let action = if dig { Action::Dig { tool: status.tool } } else { Action::Build { material: MaterialId::DIRT, limit: u32::MAX } };
     let center = {
         let edits = edits.0.read().expect("Edits-Lock vergiftet");
         let mut voxel_at = |v| cache.voxel(&world, &underground, &columns, v);

@@ -4,7 +4,9 @@
 # WASD laufen, Leertaste springen, Shift rennen, F zwischen Laufen und Fliegen wechseln, im Flug
 # Q/E runter/hoch. Rechte Maustaste gedrückt halten zum Umsehen.
 #
-# Graben und Bauen (#14) wie im Viewer: Linksklick gräbt, B baut Erde, T wechselt das Werkzeug.
+# Graben und Bauen (#14) wie im Viewer: Linksklick gräbt, B baut, T wechselt das Werkzeug, X fällt
+# den anvisierten Baum. Gebaut wird aus dem Inventar (#18), vom gewählten Platz `slot` (Auswahl in
+# `inventory.gd`).
 # Ziel ist der Punkt unter dem Fadenkreuz, höchstens 8 m entfernt; prüfen und ausführen tut es der
 # Server (`TerraforgeTerrain.dig`/`build`).
 #
@@ -26,6 +28,10 @@ var yaw := 0.0
 var pitch := 0.0
 ## Werkzeug-Stufe; wie im Viewer zu Beginn die stärkste.
 var tool := TerraforgeTerrain.tool_count() - 1
+## Inventarplatz (feste Nummer ab 0), aus dem gebaut wird.
+var slot := 0
+## Inventar offen: Klicks graben dann nicht.
+var ui_open := false
 ## Ergebnis der letzten Grab- oder Bau-Aktion (für das Overlay).
 var edit_message := ""
 
@@ -65,7 +71,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= event.relative.x * MOUSE_SENSITIVITY
 		pitch = clampf(pitch - event.relative.y * MOUSE_SENSITIVITY, -1.5, 1.5)
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and not ui_open:
 		dig()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
@@ -75,6 +81,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				build()
 			KEY_T:
 				tool = (tool + 1) % TerraforgeTerrain.tool_count()
+			KEY_X:
+				terrain.fell(camera.global_position, -camera.global_basis.z)
 
 
 ## Gräbt unter dem Fadenkreuz; das Ergebnis kommt einige Frames später (`edit_message`).
@@ -83,7 +91,7 @@ func dig() -> int:
 
 
 func build() -> int:
-	return terrain.build(camera.global_position, -camera.global_basis.z)
+	return terrain.build(camera.global_position, -camera.global_basis.z, slot)
 
 
 static func axis(negative: Key, positive: Key) -> float:

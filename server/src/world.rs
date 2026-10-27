@@ -9,9 +9,12 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
-use glam::{IVec2, IVec3};
+use glam::{IVec2, IVec3, Vec2, Vec3Swizzles};
 use terraforge_core::WorldGen;
 use terraforge_core::edits::{Voxel, WorldEdits, owner_chunk};
+use terraforge_core::inventory::Holdings;
+use terraforge_core::spawn::find_spawn;
+use terraforge_core::vegetation::SPAWN_CLEARING;
 use terraforge_core::streaming::UndergroundSource;
 use terraforge_core::underground::{SecretSeed, Underground, hide_unexposed_ores};
 use terraforge_core::volume::{CHUNK_SIZE, ColumnData, DensityChunk};
@@ -57,20 +60,25 @@ impl<K: Eq + Hash + Copy, V: Clone> Cache<K, V> {
 
 pub struct ServerWorld {
     pub(crate) world: WorldGen,
-    underground: Underground,
+    pub(crate) underground: Underground,
     columns: Cache<IVec2, Arc<ColumnData>>,
     /// Generierte Chunks ohne Spieler-Änderungen.
     chunks: Cache<IVec3, Arc<DensityChunk>>,
     pub(crate) edits: RwLock<WorldEdits>,
     /// Graben und Bauen nacheinander (`edit.rs`).
     pub(crate) edit_lock: Mutex<()>,
+    /// Inventar des Spielers (vorerst nur einer, D-021) und gebaute Voxel (`inventory.rs`, #18).
+    pub(crate) holdings: Mutex<Holdings>,
+    /// Baumfreier Kreis um den Spawn (wie beim Client), einmal berechnet (`fell.rs`).
+    pub(crate) clearing: (Vec2, f32),
 }
 
 impl ServerWorld {
     pub fn new(seed: u32, secret: SecretSeed) -> Self {
         let world = WorldGen::new(seed);
         let underground = Underground::new(secret, &world.cfg);
-        Self { world, underground, columns: Cache::new(COLUMN_CACHE), chunks: Cache::new(CHUNK_CACHE), edits: RwLock::default(), edit_lock: Mutex::default() }
+        let clearing = (find_spawn(&world).xz(), SPAWN_CLEARING);
+        Self { world, underground, columns: Cache::new(COLUMN_CACHE), chunks: Cache::new(CHUNK_CACHE), edits: RwLock::default(), edit_lock: Mutex::default(), holdings: Mutex::default(), clearing }
     }
 
     pub fn seed(&self) -> u32 {
@@ -81,7 +89,7 @@ impl ServerWorld {
         self.underground.lowest_cave_chunk().expect("Untergrund hat Höhlen")
     }
 
-    fn column(&self, position: IVec2) -> Arc<ColumnData> {
+    pub(crate) fn column(&self, position: IVec2) -> Arc<ColumnData> {
         self.columns.get(position, || Arc::new(ColumnData::sample(&self.world, position.x, position.y)))
     }
 

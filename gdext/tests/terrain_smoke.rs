@@ -66,3 +66,15 @@ fn digging_and_building_work_without_a_server_in_godot() {
     let line = stdout.lines().find(|l| l.starts_with("TERRAFORGE_DIG ")).expect("keine Ergebniszeile");
     assert!(line.contains("server=aus"), "{line}");
 }
+
+/// Bäume fällen (#18): mit Server und ohne; Holz kommt ins Inventar, der Baum ist danach weg.
+#[test]
+fn felling_trees_works_with_and_without_a_server_in_godot() {
+    let server = common::server_binary();
+    for mode in [server.display().to_string(), "off".to_string()] {
+        let project = common::TestProject::new();
+        let stdout = common::run_script(&project, "res://tests/fell_smoke.gd", std::slice::from_ref(&mode), &[]);
+        let line = stdout.lines().find(|l| l.starts_with("TERRAFORGE_FELL ")).expect("keine Ergebniszeile");
+        assert!(line.contains(if mode == "off" { "server=aus" } else { "server=verbunden" }), "{line}");
+    }
+}

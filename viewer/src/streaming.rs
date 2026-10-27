@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy::prelude::*;
+use terraforge_core::vegetation::SPAWN_CLEARING;
 use terraforge_core::{
     streaming::{Config, Event, FarKey, Stats, Streamer},
     vegetation::{TreePlacement, TreeStyle},
@@ -23,9 +24,6 @@ use crate::{EditsRes, UndergroundRes, WorldRes, env_parse};
 pub use terraforge_core::streaming::{FAR_GUARANTEED, FAR_VIEW, MAX_VIEW_RADIUS};
 
 pub const CHUNK_SIZE: f32 = volume::CHUNK_SIZE as f32;
-
-/// Bäume rund um den Spawnpunkt weglassen (freie Sicht beim Start).
-const SPAWN_CLEARING: f32 = 17.0;
 
 pub struct StreamingPlugin;
 

@@ -5,17 +5,20 @@
 //! - `primitives`: Geometrie-Bausteine (Prisma, Kegel, Blob, Ast) und Vertex-Puffer
 //! - `rng`:        deterministischer Zufall und Hashes
 //! - `support`:    Bäume auf die tatsächliche Volumen-Oberfläche setzen (#7)
+//! - `standing`:   welche Bäume einer Spalte stehen, welcher anvisiert ist, Ausbeute (#18)
 
 mod geometry;
 mod placement;
 mod primitives;
 mod rng;
+mod standing;
 mod support;
 
 use glam::Vec3;
 
 pub use geometry::build_tree_geometry;
 pub use placement::plan_trees;
+pub use standing::{SPAWN_CLEARING, column_trees, felling_yield, pick_tree, targeted_tree};
 pub use support::{GROUND_SEARCH, settle_tree};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

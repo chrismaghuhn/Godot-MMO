@@ -74,6 +74,10 @@ func _ready() -> void:
 	overlay.world = world
 	overlay.player = player
 	add_child(overlay)
+	var inventory := preload("res://scripts/inventory.gd").new()
+	inventory.terrain = terrain
+	inventory.player = player
+	add_child(inventory)
 	if bench_seconds > 0.0:
 		var bench := preload("res://scripts/bench.gd").new()
 		bench.terrain = terrain

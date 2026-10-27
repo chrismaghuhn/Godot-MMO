@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use godot::prelude::*;
-use terraforge_core::{WorldGen, spawn, streaming, volume};
+use terraforge_core::{WorldGen, spawn, streaming, vegetation, volume};
 
 /// Öffentliche Welt eines Seeds. In GDScript: `TerraforgeWorld.create(42).height_at(x, z)`, oder
 /// von einem Terrain-Node: `terrain.get_world()`.
@@ -76,6 +76,18 @@ impl TerraforgeWorld {
     #[func]
     fn spawn_look(&self, spawn_point: Vector3) -> Vector3 {
         vector(spawn::spawn_look(&self.world, glam::Vec3::new(spawn_point.x, spawn_point.y, spawn_point.z)))
+    }
+
+    /// Fußpunkte der Bäume einer Spalte (Weltkoordinaten) auf der öffentlichen Oberfläche, mit dem
+    /// freien Kreis um den Spawn. Ohne Höhlen und Spieler-Änderungen; für Tests und Debug.
+    #[func]
+    fn tree_bases(&self, chunk_x: i32, chunk_z: i32) -> PackedVector3Array {
+        let column = volume::ColumnData::sample(&self.world, chunk_x, chunk_z);
+        let clearing = Some((glam::Vec3Swizzles::xz(spawn::find_spawn(&self.world)), vegetation::SPAWN_CLEARING));
+        let size = volume::CHUNK_SIZE as f32;
+        let origin = glam::Vec3::new(chunk_x as f32 * size, 0.0, chunk_z as f32 * size);
+        let density = |voxel: glam::IVec3| column.height(voxel.x - chunk_x * volume::CHUNK_SIZE, voxel.z - chunk_z * volume::CHUNK_SIZE) - voxel.y as f32;
+        vegetation::column_trees(&self.world, &column, clearing, density).iter().map(|tree| vector(origin + tree.position)).collect()
     }
 
     /// Kantenlänge eines Chunks in Metern.

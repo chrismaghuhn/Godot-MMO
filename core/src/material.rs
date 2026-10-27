@@ -31,6 +31,9 @@ impl MaterialId {
     pub const GRANITE: MaterialId = MaterialId(13);
     pub const BASALT: MaterialId = MaterialId(14);
     pub const MARBLE: MaterialId = MaterialId(15);
+    pub const QUARTZ: MaterialId = MaterialId(50);
+    /// Aus gefällten Bäumen (#18).
+    pub const WOOD: MaterialId = MaterialId(60);
 
     pub fn is_air(self) -> bool {
         self == Self::AIR
@@ -43,6 +46,8 @@ pub enum MaterialCategory {
     Rock,
     Ore,
     Special,
+    /// Pflanzlich, aus Bäumen (#18).
+    Wood,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -92,6 +97,23 @@ pub enum TraceElement {
 }
 
 impl TraceElement {
+    pub const ALL: [TraceElement; 9] = [
+        TraceElement::Phosphorus,
+        TraceElement::Sulfur,
+        TraceElement::Manganese,
+        TraceElement::Nickel,
+        TraceElement::Arsenic,
+        TraceElement::Silver,
+        TraceElement::Copper,
+        TraceElement::Antimony,
+        TraceElement::Lead,
+    ];
+
+    /// Zu einer festen Nummer (`element as u8`), z. B. aus dem Netz.
+    pub fn from_id(id: u8) -> Option<Self> {
+        Self::ALL.into_iter().find(|element| *element as u8 == id)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             TraceElement::Phosphorus => "Phosphor",
@@ -253,6 +275,8 @@ mod tests {
             (MaterialId::GRANITE, "granite"),
             (MaterialId::BASALT, "basalt"),
             (MaterialId::MARBLE, "marble"),
+            (MaterialId::QUARTZ, "quartz"),
+            (MaterialId::WOOD, "wood"),
         ] {
             assert_eq!(registry.by_key(key), Some(constant), "Konstante für {key} passt nicht");
         }

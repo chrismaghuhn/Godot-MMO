@@ -3,7 +3,7 @@
 // IDs sind dauerhaft: Sie werden gespeichert und übers Netz gesendet. Nie ändern oder neu
 // vergeben, nur neue hinzufügen. ID 0 ist für Luft reserviert und steht nicht in dieser Datei.
 //
-// Kategorien: Soil (Boden), Rock (Gestein), Ore (Erz), Special (Spezialmaterial).
+// Kategorien: Soil (Boden), Rock (Gestein), Ore (Erz), Special (Spezialmaterial), Wood (Holz).
 // color: natürliche Farbe; accent (optional, `Some((r, g, b))`): Sprenkel/Glanz für Erze.
 // hardness: grob nach Mohs (1-10); density: g/cm³; toughness: Zähigkeit 0 (spröde) bis 1 (zäh);
 // conductivity: Wärmeleitfähigkeit in W/(m·K) (reale Richtwerte). Das sind Grundwerte: Beim Abbau
@@ -50,5 +50,8 @@
     (id: 52, key: "sulfur", name: "Schwefel", category: Special, color: (226, 206, 60), accent: Some((255, 244, 90)), hardness: 2.0, density: 2.1, toughness: 0.1, conductivity: 0.27),
     (id: 53, key: "magnetite", name: "Magnetit", category: Special, color: (48, 48, 54), accent: Some((120, 130, 170)), hardness: 6.0, density: 5.2, toughness: 0.5, conductivity: 5.1, traces: [(Manganese, 1.0), (Nickel, 1.0)]),
     (id: 54, key: "cinnabar", name: "Zinnober", category: Special, color: (180, 40, 36), accent: Some((240, 40, 40)), hardness: 2.5, density: 8.1, toughness: 0.3, conductivity: 1.5),
+
+    // Aus Bäumen (#18); später eigene Holzarten je Baumart.
+    (id: 60, key: "wood", name: "Holz", category: Wood, color: (150, 108, 64), hardness: 2.5, density: 0.65, toughness: 0.8, conductivity: 0.15),
   ],
 )
