@@ -15,7 +15,7 @@ use super::wanted::{camera_chunk, distance};
 use super::{Built, Context, CullStats, Event, Frame};
 use crate::mesh::ChunkMesh;
 use crate::occlusion::{FaceLinks, face_links};
-use crate::volume::{ChunkKind, ColumnData};
+use crate::volume::{ChunkKind, ColumnData, DensityChunk};
 
 /// Ein bearbeiteter Höhlen-Chunk: ob er ein Mesh hat, ob es gezeichnet wird, Seiten-Verbindungen.
 struct CaveEntry {
@@ -28,6 +28,8 @@ pub(super) struct CaveBuild<M> {
     position: IVec3,
     mesh: Option<M>,
     links: FaceLinks,
+    /// Dichtefeld für die Kollision (#13); `None` bei massivem Fels ohne Hohlraum.
+    density: Option<Arc<DensityChunk>>,
 }
 
 pub(super) struct Caves<M> {
@@ -87,12 +89,13 @@ impl<M: Send + 'static> Caves<M> {
 
         // 1. Weit entfernte Chunks entfernen (mit Budget), laufende Jobs dort verwerfen.
         let mut removals = limits.removals;
-        let events = &mut *frame.events;
+        let (events, field) = (&mut *frame.events, &mut *frame.field);
         self.map.retain(|&position, entry| {
             if wanted(position, 1) {
                 return true;
             }
             if !entry.mesh {
+                field.remove(position);
                 return false;
             }
             if removals == 0 {
@@ -100,6 +103,7 @@ impl<M: Send + 'static> Caves<M> {
             }
             removals -= 1;
             events.push(Event::RemoveCave { chunk: position });
+            field.remove(position);
             false
         });
         self.pending.retain(|&position, _| wanted(position, 2));
@@ -116,6 +120,10 @@ impl<M: Send + 'static> Caves<M> {
             }
             let mesh = build.mesh.is_some();
             inserted += usize::from(mesh);
+            match build.density {
+                Some(density) => frame.field.insert(density, center),
+                None => frame.field.remove(build.position),
+            }
             let old = self.map.insert(build.position, CaveEntry { mesh, visible: true, links: build.links });
             // Neubau nach Graben: das alte Mesh wird erst jetzt ersetzt.
             if mesh || old.is_some_and(|old| old.mesh) {
@@ -245,8 +253,9 @@ fn build_cave<M>(ctx: &Context<M>, position: IVec3, column: &ColumnData) -> Cave
     };
     let links = density.as_ref().map_or(FaceLinks::NONE, face_links);
     let mesh = density
-        .map(|density| ChunkMesh::build(world, column, &density))
+        .as_ref()
+        .map(|density| ChunkMesh::build(world, column, density))
         .filter(|mesh| !mesh.is_empty())
         .map(|mesh| (ctx.convert)(mesh));
-    CaveBuild { position, mesh, links }
+    CaveBuild { position, mesh, links, density: density.map(Arc::new) }
 }

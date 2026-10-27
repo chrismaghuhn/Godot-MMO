@@ -89,9 +89,9 @@ pub(crate) struct TerraforgeTerrain {
     caves: HashMap<IVec3, Gd<MeshInstance3D>>,
     far: HashMap<FarKey, Gd<MeshInstance3D>>,
     /// Letzte Job-Dauern pro Art (Spalte, Höhle, Fern) für die Anzeige.
-    recent: [VecDeque<f32>; 3],
+    recent: [VecDeque<f32>; 4],
     /// Alle Job-Dauern seit dem letzten `take_job_times` (nur mit `record_job_times`).
-    recorded: [Vec<f32>; 3],
+    recorded: [Vec<f32>; 4],
     /// Zeit für das Umsetzen der Events im letzten Frame (Mesh-Upload, Nodes).
     upload: Duration,
     base: Base<Node3D>,
@@ -109,6 +109,7 @@ fn kind_index(kind: JobKind) -> usize {
         JobKind::Column => 0,
         JobKind::Cave => 1,
         JobKind::Far => 2,
+        JobKind::Field => 3,
     }
 }
 
@@ -182,6 +183,11 @@ impl INode3D for TerraforgeTerrain {
 }
 
 impl TerraforgeTerrain {
+    /// Der Streamer (nach `_ready`), z. B. als Dichtefeld für `TerraforgeBody`.
+    pub(crate) fn streamer(&self) -> Option<&Streamer<MeshData>> {
+        self.streamer.as_ref()
+    }
+
     /// Pfad des Server-Programms: `server_binary` oder der zuletzt gebaute aus `target/`.
     fn server_binary_path(&self) -> String {
         let globalize = |path: &str| ProjectSettings::singleton().globalize_path(path).to_string();
@@ -362,13 +368,15 @@ impl TerraforgeTerrain {
         let column_meshes: usize = self.columns.values().map(|column| column.chunks).sum();
         set("meshes", ((column_meshes + self.caves.len() + self.far.len()) as i64).to_variant());
         set("trees", (self.columns.values().map(|column| column.trees).sum::<usize>() as i64).to_variant());
-        let idle = s.column_jobs == 0 && s.columns_ready == 0 && s.cave_jobs == 0 && s.caves_ready == 0 && s.far_jobs == 0 && s.far_ready == 0;
+        let idle = s.column_jobs == 0 && s.columns_ready == 0 && s.cave_jobs == 0 && s.caves_ready == 0 && s.far_jobs == 0 && s.far_ready == 0 && s.field_jobs == 0;
         set("idle", idle.to_variant());
         set("server", self.server_state.to_variant());
+        set("field_chunks", (s.field_chunks as i64).to_variant());
         set("upload_ms", (self.upload.as_secs_f32() * 1000.0).to_variant());
         set("column_job_ms", average(&self.recent[0]).to_variant());
         set("cave_job_ms", average(&self.recent[1]).to_variant());
         set("far_job_ms", average(&self.recent[2]).to_variant());
+        set("field_job_ms", average(&self.recent[3]).to_variant());
         stats
     }
 
@@ -376,7 +384,7 @@ impl TerraforgeTerrain {
     #[func]
     fn take_job_times(&mut self) -> VarDictionary {
         let mut times = VarDictionary::new();
-        for (key, index) in [("column", 0), ("cave", 1), ("far", 2)] {
+        for (key, index) in [("column", 0), ("cave", 1), ("far", 2), ("field", 3)] {
             let values = std::mem::take(&mut self.recorded[index]);
             times.set(key, &PackedFloat32Array::from(values).to_variant());
         }

@@ -22,6 +22,8 @@ pub(super) struct ColumnBuild<M> {
     /// Verbindungen der Seiten der gebauten Chunks (für Cave Culling, #8).
     links: Vec<(i32, FaceLinks)>,
     trees: Vec<TreePlacement>,
+    /// Alle gebauten Dichtefelder (für Kollision nahe der Kamera, #13).
+    fields: Vec<Arc<DensityChunk>>,
     /// Neubau nach Graben/Bauen: ersetzt die geladene Spalte.
     rebuild: bool,
 }
@@ -75,13 +77,14 @@ impl<M: Send + 'static> Columns<M> {
 
         // 1. Spalten außerhalb des Radius entfernen (mit Budget).
         let mut removals = limits.removals;
-        let (cache, surface_links, events) = (&mut *frame.cache, &mut *frame.surface_links, &mut *frame.events);
+        let (cache, surface_links, events, field) = (&mut *frame.cache, &mut *frame.surface_links, &mut *frame.events, &mut *frame.field);
         self.loaded.retain(|&position| {
             if column_within(position, center, radius + 1) || removals == 0 {
                 return true;
             }
             removals -= 1;
             events.push(Event::RemoveColumn { column: position });
+            field.remove_column(position);
             cache.remove(&position);
             surface_links.retain(|p, _| p.xz() != position);
             false
@@ -156,6 +159,10 @@ impl<M: Send + 'static> Columns<M> {
         {
             let edits = frame.ctx.edits.read().expect("Edits-Lock vergiftet");
             build.trees.retain(|tree| !edits.is_felled(tree.id));
+        }
+        let camera = camera_chunk(frame.camera);
+        for chunk in build.fields {
+            frame.field.insert(chunk, camera);
         }
         // Ein Neubau ersetzt die alte Spalte erst jetzt, wo die neue da ist (kein Flackern).
         self.loaded.insert(position);
@@ -242,5 +249,6 @@ fn build_column<M>(ctx: &Context<M>, position: IVec2, cached: Option<Arc<ColumnD
             None => false,
         }
     });
-    ColumnBuild { position, column, meshes, links, trees, rebuild }
+    let fields = fields.into_values().map(Arc::new).collect();
+    ColumnBuild { position, column, meshes, links, trees, fields, rebuild }
 }

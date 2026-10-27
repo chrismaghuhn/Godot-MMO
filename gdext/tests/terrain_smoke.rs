@@ -1,5 +1,6 @@
-//! Terrain-Streaming und Hauptszene in einem echten Godot (headless, #11). Die Prüfungen stehen in
-//! `client/tests/terrain_smoke.gd`. Braucht Godot 4.7 (`GODOT`).
+//! Terrain-Streaming (#11), Höhlen vom Server (#56), Bewegung (#13) und Hauptszene in einem echten
+//! Godot (headless). Die Prüfungen stehen in `client/tests/terrain_smoke.gd` und
+//! `client/tests/player_smoke.gd`. Braucht Godot 4.7 (`GODOT`).
 
 mod common;
 
@@ -35,4 +36,13 @@ fn caves_come_from_the_server_in_godot() {
 fn main_scene_runs_without_errors() {
     let project = common::TestProject::new();
     common::run(&project, &["--quit-after", "300"], &[]);
+}
+
+/// Bewegung und Kollision (#13): landen, laufen ohne einzusinken, springen.
+#[test]
+fn player_walks_on_the_terrain_in_godot() {
+    let project = common::TestProject::new();
+    let stdout = common::run_script(&project, "res://tests/player_smoke.gd", &[], &[]);
+    let line = stdout.lines().find(|l| l.starts_with("TERRAFORGE_PLAYER ")).expect("keine Ergebniszeile");
+    assert!(!line.contains("fields=0"), "kein Dichtefeld: {line}");
 }

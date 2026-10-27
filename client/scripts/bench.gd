@@ -13,7 +13,7 @@ var elapsed := 0.0
 var frames: Array[float] = []
 ## Zeit für das Umsetzen der Streaming-Events (Mesh-Upload, Nodes) pro Frame.
 var uploads: Array[float] = []
-var jobs := {"column": PackedFloat32Array(), "cave": PackedFloat32Array(), "far": PackedFloat32Array()}
+var jobs := {"column": PackedFloat32Array(), "cave": PackedFloat32Array(), "far": PackedFloat32Array(), "field": PackedFloat32Array()}
 var unfocused := 0
 
 
@@ -65,6 +65,7 @@ func _report() -> void:
 		"  Jobs Spalten %5d×  %s" % [jobs.column.size(), summary(Array(jobs.column))],
 		"  Jobs Höhlen  %5d×  %s" % [jobs.cave.size(), summary(Array(jobs.cave))],
 		"  Jobs Fern    %5d×  %s" % [jobs.far.size(), summary(Array(jobs.far))],
+		"  Jobs Feld    %5d×  %s" % [jobs.field.size(), summary(Array(jobs.field))],
 		"  Fenster ohne Fokus in %d von %d Frames" % [unfocused, frames.size()],
 	]
 	var report := "\n".join(lines)

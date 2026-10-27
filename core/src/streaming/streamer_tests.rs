@@ -104,7 +104,7 @@ fn settle(streamer: &mut Streamer<usize>, scene: &mut Scene, camera: Vec3) {
         streamer.update(camera);
         let events: Vec<_> = streamer.drain_events().collect();
         let stats = streamer.stats();
-        let idle = stats.column_jobs == 0 && stats.columns_ready == 0 && stats.cave_jobs == 0 && stats.caves_ready == 0 && stats.far_jobs == 0 && stats.far_ready == 0;
+        let idle = stats.column_jobs == 0 && stats.columns_ready == 0 && stats.cave_jobs == 0 && stats.caves_ready == 0 && stats.far_jobs == 0 && stats.far_ready == 0 && stats.field_jobs == 0;
         quiet = if events.is_empty() && idle { quiet + 1 } else { 0 };
         events.into_iter().for_each(|event| scene.apply(event));
         std::thread::sleep(Duration::from_millis(2));
@@ -269,4 +269,29 @@ fn clearing_keeps_trees_away_from_the_spawn() {
     settle(&mut cleared, &mut scene, camera);
     assert_eq!(near(&scene), 0, "Bäume im freien Kreis");
     assert!(scene.trees.values().flatten().count() > 0, "gar keine Bäume");
+}
+
+/// Graben direkt neben dem Körper: Bis der neue Stand da ist, gilt der alte, Gegrabenes wird nicht
+/// kurz massiv (Review-Fund: der Körper wurde 8,7 m aus einer Grube geschoben).
+#[test]
+fn digging_keeps_the_old_density_until_the_new_one_arrives() {
+    use crate::movement::DensitySource;
+    let world = Arc::new(WorldGen::new(42));
+    let edits = Arc::new(RwLock::new(WorldEdits::default()));
+    let mut streamer = streamer(&world, &edits, 1);
+    let mut scene = Scene::default();
+    let ground = world.column_height(40.0, 40.0);
+    let camera = Vec3::new(40.0, ground - 6.0, 40.0);
+    // Grube graben und laden lassen.
+    let pit = Vec3::new(40.0, ground - 5.0, 40.0);
+    streamer.mark_changed(dig(&world, &edits, pit, 3.0));
+    settle(&mut streamer, &mut scene, camera);
+    let inside = pit.round().as_ivec3();
+    assert!(DensitySource::density(&streamer, inside) <= 0.0, "Grube nicht im Feld");
+    // Daneben graben: Bis zum nächsten `update` bleibt die Grube Luft.
+    streamer.mark_changed(dig(&world, &edits, pit + Vec3::new(2.5, 0.0, 0.0), 2.0));
+    assert!(DensitySource::density(&streamer, inside) <= 0.0, "Grube kurz massiv");
+    settle(&mut streamer, &mut scene, camera);
+    let beside = (pit + Vec3::new(2.5, 0.0, 0.0)).round().as_ivec3();
+    assert!(DensitySource::density(&streamer, beside) <= 0.0, "neues Loch nicht im Feld");
 }

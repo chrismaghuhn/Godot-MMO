@@ -1,10 +1,11 @@
-# Startszene (#11): Terrain-Streaming, Kamera, Licht, Nebel, Wasser und Overlay.
+# Startszene (#11): Terrain-Streaming, Spieler (#13), Licht, Nebel, Wasser und Overlay.
 #
 # Aufbau im Code statt im Editor, damit Werte aus dem Core (Spawnpunkt, Sichtweite) passen.
 # Umgebungsvariablen, soweit möglich wie im Viewer: TERRAFORGE_VIEW_RADIUS, TERRAFORGE_FAR
 # (0 = ohne Fernterrain), TERRAFORGE_AUTOPILOT (m/s nach +x), TERRAFORGE_BENCH (Sekunden, > 0),
 # TERRAFORGE_BENCH_OUT, TERRAFORGE_SHOT_AFTER (Frames, Standard 240), TERRAFORGE_PITCH/
-# TERRAFORGE_YAW (Grad), TERRAFORGE_CAM_Y (Kamera höher), TERRAFORGE_SERVER (auto, off oder
+# TERRAFORGE_YAW (Grad), TERRAFORGE_CAM_Y (fliegend so viel höher starten), TERRAFORGE_FLY (fliegend
+# starten; Autopilot fliegt immer), TERRAFORGE_SERVER (auto, off oder
 # host:port; Standard auto, siehe TerraforgeTerrain). Anders als im Viewer: TERRAFORGE_SEED
 # (im Viewer das erste Argument) und TERRAFORGE_SHOT ist der Pfad der PNG-Datei (im Viewer ein
 # Schalter für shots/auto.png).
@@ -23,7 +24,7 @@ const SHOT_RETRIES := 20
 
 var terrain: TerraforgeTerrain
 var world: TerraforgeWorld
-var camera: Camera3D
+var player: Node3D
 ## Wasserflächen (inneres Feld und Ring), gemeinsam verschoben.
 var water: Node3D
 var autopilot := 0.0
@@ -51,15 +52,19 @@ func _ready() -> void:
 		return
 
 	var spawn := world.spawn_point()
-	camera = preload("res://scripts/fly_camera.gd").new()
-	camera.far = TerraforgeWorld.far_view() * 2.0
-	camera.position = spawn + Vector3(0, 4.5 + env_float("TERRAFORGE_CAM_Y", 0.0), 0)
-	add_child(camera)
-	camera.look_at(world.spawn_look(spawn))
+	player = preload("res://scripts/player.gd").new()
+	add_child(player)
+	player.setup(terrain, spawn, world.spawn_look(spawn))
+	player.camera.far = TerraforgeWorld.far_view() * 2.0
+	player.camera.make_current()
 	if OS.has_environment("TERRAFORGE_PITCH"):
-		camera.rotation = Vector3(deg_to_rad(env_float("TERRAFORGE_PITCH", 0)), deg_to_rad(env_float("TERRAFORGE_YAW", 0)), 0)
-	camera.make_current()
+		player.look(deg_to_rad(env_float("TERRAFORGE_YAW", 0)), deg_to_rad(env_float("TERRAFORGE_PITCH", 0)))
 	autopilot = env_float("TERRAFORGE_AUTOPILOT", 0.0)
+	# Wie bisher im Viewer: Augenhöhe 4,5 m über dem Spawn, wenn fliegend gestartet wird.
+	if autopilot != 0.0 or OS.has_environment("TERRAFORGE_FLY") or OS.has_environment("TERRAFORGE_CAM_Y"):
+		player.set_flying(true)
+		player.position = spawn + Vector3(0, 4.5 - player.body.eye_height() + env_float("TERRAFORGE_CAM_Y", 0.0), 0)
+		player.reset_physics_interpolation()
 
 	_add_environment()
 	_add_light()
@@ -67,6 +72,7 @@ func _ready() -> void:
 	var overlay := preload("res://scripts/overlay.gd").new()
 	overlay.terrain = terrain
 	overlay.world = world
+	overlay.player = player
 	add_child(overlay)
 	if bench_seconds > 0.0:
 		var bench := preload("res://scripts/bench.gd").new()
@@ -118,6 +124,8 @@ func _add_water() -> void:
 	var material := ShaderMaterial.new()
 	material.shader = preload("res://shaders/water.gdshader")
 	water = Node3D.new()
+	# Folgt der Kamera in `_process`, nicht im Physik-Takt: nicht interpolieren.
+	water.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	water.position.y = world.sea_level()
 	add_child(water)
 	# Inneres Feld, dann vier Rechtecke als Ring (ohne Überlappung, sonst doppelt durchsichtig).
@@ -143,15 +151,19 @@ func _add_water_plane(material: Material, size: Vector2, offset: Vector3, subdiv
 	water.add_child(instance)
 
 
-func _process(delta: float) -> void:
-	if camera == null:
+func _physics_process(delta: float) -> void:
+	# Im Physik-Takt wie die Spieler-Bewegung (Physik-Interpolation glättet die Kamera dazwischen).
+	if player != null and autopilot != 0.0:
+		player.position.x += autopilot * delta
+		player.position.y = world.height_at(player.position.x, player.position.z) + 32.0
+
+
+func _process(_delta: float) -> void:
+	if player == null:
 		return
-	if autopilot != 0.0:
-		camera.position.x += autopilot * delta
-		camera.position.y = world.height_at(camera.position.x, camera.position.z) + 32.0
 	# Wasser folgt der Kamera, auf 64 m gerundet (Vielfaches des Rasters, kein "Mitzittern").
-	water.position.x = roundf(camera.position.x / 64.0) * 64.0
-	water.position.z = roundf(camera.position.z / 64.0) * 64.0
+	water.position.x = roundf(player.position.x / 64.0) * 64.0
+	water.position.z = roundf(player.position.z / 64.0) * 64.0
 
 
 func _take_screenshot_later(path: String, frames: int) -> void:

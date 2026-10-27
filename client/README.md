@@ -59,10 +59,13 @@ Die Startszene ([`scenes/main.tscn`](scenes/main.tscn), aufgebaut in
 ([`shaders/water.gdshader`](shaders/water.gdshader)), Bäumen (MultiMesh pro Spalte, #12) und Höhlen
 vom Server. Start am selben Spawnpunkt wie im Viewer.
 
-- **Steuerung:** WASD + Q/E fliegen, Shift schnell, rechte Maustaste halten zum Umsehen,
-  F3 Overlay (Frametimes, Streaming, gezeichnete Objekte, Position, Biom).
+- **Steuerung** (Ich-Perspektive, #13): WASD laufen, Leertaste springen, Shift rennen, F zwischen
+  Laufen und Fliegen wechseln (Fliegen ohne Kollision, Q/E runter/hoch), rechte Maustaste halten
+  zum Umsehen, F3 Overlay (Frametimes, Streaming, gezeichnete Objekte, Position, Biom). Bäume
+  haben noch keine Kollision.
 - **Umgebungsvariablen** (wie im Viewer): `TERRAFORGE_SEED`, `TERRAFORGE_VIEW_RADIUS`,
-  `TERRAFORGE_FAR=0` (ohne Fernterrain), `TERRAFORGE_CAM_Y`, `TERRAFORGE_PITCH`/`TERRAFORGE_YAW`
+  `TERRAFORGE_FAR=0` (ohne Fernterrain), `TERRAFORGE_FLY` (fliegend starten), `TERRAFORGE_CAM_Y`
+  (fliegend höher starten), `TERRAFORGE_PITCH`/`TERRAFORGE_YAW`
   (Grad), `TERRAFORGE_AUTOPILOT` (m/s nach +x), `TERRAFORGE_SHOT=pfad.png` mit
   `TERRAFORGE_SHOT_AFTER` (Frames) für einen Screenshot.
 - **Benchmark** (wie #9 im Viewer, Fenster sichtbar lassen):

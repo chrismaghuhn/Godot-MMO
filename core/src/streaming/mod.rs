@@ -11,6 +11,7 @@
 //! - `culling`: Cave Culling über Seiten-Verbindungen (#8, D-018)
 //! - `far`:     grobes Fernterrain bis ~3,5 km (#33)
 //! - `dirty`:   durch Graben/Bauen veränderte Chunks (#6)
+//! - `field`:   Dichtefeld nahe der Kamera für Kollision und Bewegung (#13)
 //! - `jobs`:    Worker-Threads (einziger Ort mit Threads)
 //! - `source`:  woher die Dichtefelder kommen (lokaler Untergrund oder nur Oberfläche, D-005)
 //!
@@ -22,6 +23,7 @@ mod columns;
 mod culling;
 mod dirty;
 mod far;
+mod field;
 mod jobs;
 mod source;
 mod wanted;
@@ -128,6 +130,9 @@ pub struct Stats {
     /// Fertige Fernkacheln, die noch auf das Einfügen warten (eine pro Frame).
     pub far_ready: usize,
     pub far_tiles: usize,
+    /// Chunks mit Dichtefeld für die Kollision und laufende Jobs dafür.
+    pub field_chunks: usize,
+    pub field_jobs: usize,
     pub cull: CullStats,
 }
 
@@ -163,6 +168,7 @@ enum Built<M> {
     Column(columns::ColumnBuild<M>),
     Cave(caves::CaveBuild<M>),
     Far(far::FarBuild<M>),
+    Field(field::FieldBuild),
 }
 
 /// Was ein Schritt der Chunk-Arten gemeinsam nutzt.
@@ -175,6 +181,7 @@ struct Frame<'a, M> {
     /// gilt der Chunk als offen (vorsichtig).
     surface_links: &'a mut HashMap<IVec3, FaceLinks>,
     dirty: &'a mut dirty::DirtyChunks,
+    field: &'a mut field::DensityField,
     events: &'a mut Vec<Event<M>>,
     camera: Vec3,
 }
@@ -188,6 +195,7 @@ pub struct Streamer<M> {
     cache: HashMap<IVec2, Arc<ColumnData>>,
     surface_links: HashMap<IVec3, FaceLinks>,
     dirty: dirty::DirtyChunks,
+    field: field::DensityField,
     events: Vec<Event<M>>,
     job_times: Vec<(JobKind, Duration)>,
     culling: bool,
@@ -213,6 +221,7 @@ impl<M: Send + 'static> Streamer<M> {
             cache: HashMap::new(),
             surface_links: HashMap::new(),
             dirty: Default::default(),
+            field: Default::default(),
             events: Vec::new(),
             job_times: Vec::new(),
             culling,
@@ -235,10 +244,12 @@ impl<M: Send + 'static> Streamer<M> {
                 Ok(Built::Column(build)) => self.columns.accept(done.id, build),
                 Ok(Built::Cave(build)) => self.caves.accept(done.id, build),
                 Ok(Built::Far(build)) => self.far.accept(done.id, build),
+                Ok(Built::Field(build)) => self.field.accept(done.id, build),
                 Err(payload) => {
                     self.columns.forget(done.id);
                     self.caves.forget(done.id);
                     self.far.forget(done.id);
+                    self.field.forget(done.id);
                     panic.get_or_insert(payload);
                 }
             }
@@ -252,6 +263,7 @@ impl<M: Send + 'static> Streamer<M> {
             cache: &mut self.cache,
             surface_links: &mut self.surface_links,
             dirty: &mut self.dirty,
+            field: &mut self.field,
             events: &mut self.events,
             camera,
         };
@@ -261,6 +273,13 @@ impl<M: Send + 'static> Streamer<M> {
         if self.ctx.config.far {
             self.far.update(&mut frame, &self.columns);
         }
+        self.field.update(&self.ctx, &mut self.pool, &self.cache, camera_chunk(camera));
+    }
+
+    /// Dichte am Welt-Voxel (> 0 fest): aus den geladenen Chunks nahe der Kamera, sonst die
+    /// öffentliche Höhe (siehe `field`). Für Kollision und Bewegung (#13).
+    pub fn density_at(&self, voxel: IVec3) -> f32 {
+        self.field.density(voxel, &self.cache, &self.ctx.world)
     }
 
     /// Die Events seit dem letzten Aufruf, in der Reihenfolge, in der sie umzusetzen sind.
@@ -270,6 +289,10 @@ impl<M: Send + 'static> Streamer<M> {
 
     /// Markiert veränderte Chunks (Graben/Bauen) zum Neubau. Vor dem nächsten `update` aufrufen.
     pub fn mark_changed(&mut self, chunks: impl IntoIterator<Item = IVec3>) {
+        let chunks: Vec<IVec3> = chunks.into_iter().collect();
+        for &chunk in &chunks {
+            self.field.invalidate(chunk);
+        }
         self.dirty.mark(chunks, &self.cache);
     }
 
@@ -298,6 +321,8 @@ impl<M: Send + 'static> Streamer<M> {
             far_jobs: self.far.pending_count(),
             far_ready: self.far.ready_count(),
             far_tiles: self.far.tile_count(),
+            field_chunks: self.field.len(),
+            field_jobs: self.field.pending_count(),
             cull: self.cull,
         }
     }

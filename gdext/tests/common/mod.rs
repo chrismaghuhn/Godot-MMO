@@ -77,15 +77,17 @@ pub fn server_binary() -> PathBuf {
     BUILT
         .get_or_init(|| {
             let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+            // Eigener Target-Ordner: Sonst wäre der Debug-Build in `target/debug` der neueste, und
+            // das Spiel nähme ihn statt des schnelleren Release-Builds (siehe `server_binary_path`).
+            let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-server");
             let status = Command::new(env!("CARGO"))
                 .args(["build", "-q", "-p", "terraforge-server", "--manifest-path"])
                 .arg(root.join("Cargo.toml"))
-                // Eigener Workspace, eigener Target-Ordner (nicht der dieses Tests).
-                .env_remove("CARGO_TARGET_DIR")
+                .env("CARGO_TARGET_DIR", &target)
                 .status()
                 .expect("cargo startet nicht");
             assert!(status.success(), "Server nicht gebaut");
-            root.join("target/debug/terraforge-server").canonicalize().expect("Server-Programm fehlt")
+            target.join("debug/terraforge-server").canonicalize().expect("Server-Programm fehlt")
         })
         .clone()
 }

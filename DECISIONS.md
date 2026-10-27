@@ -709,3 +709,34 @@ Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
   Spielers liegen (der Client kennt seine Position selbst, Bewegung ist noch nicht autoritativ),
   keine Begrenzung der Warteschlangen und keine Schreib-Timeouts, keine Kompression über den Diff
   hinaus, nur ein Client. Graben und Bauen über den Server kommt mit #14.
+
+**Umsetzung Bewegung und Kollision (#13, 2026-10-27):**
+- `core/src/movement/`: Kapsel (r 0,35 m, 1,8 m, Augen 1,65 m) aus drei Kugeln, Kollision gegen die
+  Fläche `dichte == 0` des trilinear interpolierten Dichtefelds (Abstand ≈ `-dichte/|∇|`).
+  Laufen 4,5 m/s, Rennen 8 m/s, Sprung ≈ 0,8 m, steiler als 45° ist Wand (D-020), Folgen des Bodens
+  beim Hinablaufen, Teilschritte ≤ 0,2 m, `dt` und Fallgeschwindigkeit begrenzt. Godot liefert nur
+  Eingabe und Kamera (`TerraforgeBody`, `client/scripts/player.gd`); Fliegen (F) bleibt ohne Kollision.
+- Dichtefeld im Streamer (`streaming/field.rs`): Chunks im Umkreis von 2 Chunks um die Kamera (in
+  der Ich-Perspektive der Spieler), aus den Mesh-Jobs übernommen oder mit eigenen Jobs
+  (`JobKind::Field`) nachgeholt; sonst die öffentliche Höhe. Graben/Bauen macht die Chunks ungültig.
+- Review-Funde behoben: Das Feld war ab ~180 m vom Spawn leer (Chunks entstehen am Rand der Sicht,
+  außerhalb des Feldes) – jetzt eigene Jobs, geprüft mit Untergrund über 300 m Voxel für Voxel. An
+  Wänden zitterte der Körper 7–15 cm pro Frame: Die Kante zwischen Boden und Wand ist im
+  interpolierten Feld eine 45°-Rampe, die er immer wieder hinauflief; jetzt merkt er sich berührte
+  Wände (bis er sich 15 cm von der Wandebene entfernt oder die Wand neben ihm endet) und gleitet
+  daran entlang; bleibt nach dem Abzug weniger als 30 % der Geschwindigkeit, bleibt er stehen (sonst
+  pendelte er in Innenecken). In zu niedrige Gänge ging er mit dem Kopf in den Fels; jetzt wird die
+  waagerechte Bewegung zurückgenommen, wenn die Kapsel nicht passt. Graben direkt neben dem Körper
+  schob ihn aus der Grube, weil der Chunk bis zum Neubau fehlte; jetzt gilt der alte Stand weiter.
+  An Wänden endete ein Sprung nach 10 cm (die Kante zählte im Steigen als Boden); jetzt gibt es im
+  Steigen keinen Boden.
+- Godot: Physik-Interpolation an (sonst ruckelt die Kamera auf Monitoren über 60 Hz); die Kamera
+  selbst ist nicht interpoliert und folgt der interpolierten Position, damit die Maus ohne
+  Verzögerung wirkt. Der Test-Server
+  der Godot-Tests liegt in einem eigenen Ordner, damit das Spiel weiter den Release-Server nimmt.
+- Gemessen (30 s Autopilot, Release-Server, Fenster im Fokus): kein Frame über 20 ms; Feld-Jobs
+  Ø 5 ms im Hintergrund.
+- Offen: Bäume ohne Kollision; Körper-Maße fest (später vom Charakter, #24); `sin`/`cos` sind nicht
+  auf allen Plattformen bitgleich (für Vorhersage gegen den Server in Phase 6 zu klären). Bei
+  schnellem Graben kann ein älterer Neubau einen neueren Feld-Stand kurz überschreiben (bräuchte
+  eine Edit-Version pro Chunk, mit #14).

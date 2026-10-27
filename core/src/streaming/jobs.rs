@@ -19,6 +19,8 @@ pub enum JobKind {
     Column,
     Cave,
     Far,
+    /// Dichtefeld für die Kollision nahe der Kamera (#13).
+    Field,
 }
 
 type Work<R> = Box<dyn FnOnce() -> R + Send>;

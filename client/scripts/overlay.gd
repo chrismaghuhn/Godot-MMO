@@ -5,6 +5,7 @@ const FRAMES := 240
 
 var terrain: TerraforgeTerrain
 var world: TerraforgeWorld
+var player: Node3D
 var frame_times: Array[float] = []
 var refresh := 0.25
 var label: Label
@@ -21,6 +22,14 @@ func _ready() -> void:
 	background.set_corner_radius_all(4)
 	label.add_theme_stylebox_override("normal", background)
 	add_child(label)
+
+
+func _mode() -> String:
+	if player == null:
+		return ""
+	if player.flying:
+		return "Flug"
+	return "Lauf (am Boden)" if player.body.is_on_ground() else "Lauf (in der Luft)"
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -52,8 +61,8 @@ func _process(delta: float) -> void:
 	label.text = (
 		"FPS %4.0f   Frame %5.2f ms   p95 %5.2f ms   max %5.2f ms   Upload %4.2f ms\n" % [Engine.get_frames_per_second(), avg, p95, sorted[-1], s.get("upload_ms", 0.0)]
 		+ "Spalten %3d   Jobs %d+%d   Bäume %5d   Fern %3d (Jobs %d)   Höhlen %d (sichtbar %d)   Server %s\n" % [s.get("columns", 0), s.get("column_jobs", 0), s.get("columns_ready", 0), s.get("trees", 0), s.get("far_tiles", 0), s.get("far_jobs", 0), s.get("cave_meshes", 0), s.get("caves_shown", 0), s.get("server", "?")]
-		+ "Job-Zeiten: Spalte %.2f ms   Höhle %.2f ms   Fern %.2f ms\n" % [s.get("column_job_ms", 0.0), s.get("cave_job_ms", 0.0), s.get("far_job_ms", 0.0)]
+		+ "Job-Zeiten: Spalte %.2f ms   Höhle %.2f ms   Fern %.2f ms   Feld %.2f ms (%d Chunks)\n" % [s.get("column_job_ms", 0.0), s.get("cave_job_ms", 0.0), s.get("far_job_ms", 0.0), s.get("field_job_ms", 0.0), s.get("field_chunks", 0)]
 		+ "Gezeichnet: %d Objekte inkl. Schatten, %d Draw Calls   (Terrain-Meshes %d)\n" % [objects, draw_calls, s.get("meshes", 0)]
 		+ "X %7.1f   Y %6.1f   Z %7.1f   %s   Seed %d   [F3]\n" % [position.x, position.y, position.z, world.biome_at(position.x, position.z), world.seed()]
-		+ "[WASD/QE] fliegen  [Shift] schnell  [rechte Maustaste] umsehen")
+		+ "%s   [WASD] laufen  [Leertaste] springen  [Shift] rennen  [F] Laufen/Fliegen  [Q/E] im Flug runter/hoch  [rechte Maustaste] umsehen" % _mode())
 	label.add_theme_color_override("font_color", Color(0.55, 1.0, 0.55) if p95 <= 16.7 else (Color(1.0, 0.85, 0.35) if p95 <= 25.0 else Color(1.0, 0.45, 0.4)))

@@ -20,9 +20,9 @@ use crate::env_parse;
 
 const WARMUP_SECONDS: f32 = 4.0;
 
-/// Dauer der Hintergrund-Jobs in ms, je Art (Spalte, Höhle, Fern). Die Jobs laufen im
+/// Dauer der Hintergrund-Jobs in ms, je Art (Spalte, Höhle, Fern, Kollisionsfeld). Die Jobs laufen im
 /// Core-Streamer; der Viewer trägt ihre Dauer pro Frame ein. Nur im Benchmark relevant.
-static JOB_TIMES: Mutex<[Vec<f32>; 3]> = Mutex::new([Vec::new(), Vec::new(), Vec::new()]);
+static JOB_TIMES: Mutex<[Vec<f32>; 4]> = Mutex::new([Vec::new(), Vec::new(), Vec::new(), Vec::new()]);
 
 /// Nur bei laufendem Benchmark sammeln, sonst wüchse `JOB_TIMES` die ganze Sitzung (Review-Fund).
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -41,6 +41,7 @@ pub fn record_job(kind: JobKind, duration: Duration) {
         JobKind::Column => 0,
         JobKind::Cave => 1,
         JobKind::Far => 2,
+        JobKind::Field => 3,
     };
     if let Ok(mut times) = JOB_TIMES.lock() {
         times[index].push(duration.as_secs_f32() * 1000.0);
@@ -127,7 +128,7 @@ fn report(bench: &Bench) -> String {
         ),
     ];
     if let Ok(times) = JOB_TIMES.lock() {
-        for (name, list) in ["Spalten", "Höhlen", "Fern"].iter().zip(times.iter()) {
+        for (name, list) in ["Spalten", "Höhlen", "Fern", "Feld"].iter().zip(times.iter()) {
             let mut sorted = list.clone();
             sorted.sort_by(f32::total_cmp);
             let avg = sorted.iter().sum::<f32>() / sorted.len().max(1) as f32;

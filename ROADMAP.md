@@ -67,7 +67,7 @@ Server-Prozess, damit der Client nie `underground` enthält (D-005).
   - [x] Fernterrain (D-015), Wasser-Shader, Debug-Overlay (Frametimes, Chunk-Zeiten)
 - [x] Bäume über `MultiMeshInstance3D`: #12
 - [x] Lokaler Server-Prozess (`server/`, `protocol/`): Untergrund-Chunks, Erz-Filter, Cave Culling im Client: #56
-- [ ] Laufen, Fliegen, Kollision mit dem Terrain, Bewegung im Core: #13
+- [x] Laufen, Fliegen, Kollision mit dem Terrain, Bewegung im Core: #13
 - [ ] Graben/Bauen im Client, geprüft vom Server: #14
 
 Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
