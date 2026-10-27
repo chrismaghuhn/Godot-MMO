@@ -736,7 +736,7 @@ Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
   der Godot-Tests liegt in einem eigenen Ordner, damit das Spiel weiter den Release-Server nimmt.
 - Gemessen (30 s Autopilot, Release-Server, Fenster im Fokus): kein Frame über 20 ms; Feld-Jobs
   Ø 5 ms im Hintergrund.
-- Offen: Bäume ohne Kollision; Körper-Maße fest (später vom Charakter, #24); `sin`/`cos` sind nicht
-  auf allen Plattformen bitgleich (für Vorhersage gegen den Server in Phase 6 zu klären). Bei
+- Offen: Bäume ohne Kollision (#58); Körper-Maße fest (später vom Charakter, #24); `sin`/`cos` sind
+  nicht auf allen Plattformen bitgleich (für Vorhersage gegen den Server in Phase 6, #59). Bei
   schnellem Graben kann ein älterer Neubau einen neueren Feld-Stand kurz überschreiben (bräuchte
-  eine Edit-Version pro Chunk, mit #14).
+  eine Edit-Version pro Chunk, mit #14). Das Spielgefühl der Steuerung ist nur von Hand prüfbar (#60).
