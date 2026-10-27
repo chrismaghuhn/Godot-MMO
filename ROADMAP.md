@@ -17,7 +17,8 @@ core/     terraforge-core   Rust, engine-unabhängig: Weltgenerierung, Streaming
 viewer/   terraforge-viewer Bevy, Debug-Tool für den Core (+ mapdump)
 gdext/    terraforge-gdext  Rust, Godot-Anbindung des Cores (eigener Workspace, ohne Untergrund)
 client/   Godot 4           Spiel-Client, lädt gdext (Build: client/README.md)
-server/   (geplant)         Rust, headless, autoritativ
+protocol/ terraforge-protocol Rust, Nachrichten Client ↔ Server (ohne Untergrund)
+server/   terraforge-server Rust, headless, mit Untergrund; vorerst lokal für den Singleplayer
 ```
 
 ---
@@ -65,7 +66,7 @@ Server-Prozess, damit der Client nie `underground` enthält (D-005).
 - [x] Chunk-Mesh in Godot anzeigen, dann Streaming um die Kamera: #11
   - [x] Fernterrain (D-015), Wasser-Shader, Debug-Overlay (Frametimes, Chunk-Zeiten)
 - [x] Bäume über `MultiMeshInstance3D`: #12
-- [ ] Lokaler Server-Prozess (`server/`, `protocol/`): Untergrund-Chunks, Erz-Filter, Cave Culling im Client: #56
+- [x] Lokaler Server-Prozess (`server/`, `protocol/`): Untergrund-Chunks, Erz-Filter, Cave Culling im Client: #56
 - [ ] Laufen, Fliegen, Kollision mit dem Terrain, Bewegung im Core: #13
 - [ ] Graben/Bauen im Client, geprüft vom Server: #14
 

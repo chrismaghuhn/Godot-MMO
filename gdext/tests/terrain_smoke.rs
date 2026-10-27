@@ -19,6 +19,17 @@ fn far_terrain_replaces_its_tiles_in_godot() {
     assert!(line.contains("columns=81") && line.contains("far_tiles=184"), "{line}");
 }
 
+/// Mit Server (#56): Godot startet ihn als Kindprozess, Höhlen kommen an.
+#[test]
+fn caves_come_from_the_server_in_godot() {
+    let server = common::server_binary();
+    let project = common::TestProject::new();
+    let args = ["caves".to_string(), server.display().to_string()];
+    let stdout = common::run_script(&project, "res://tests/terrain_smoke.gd", &args, &[]);
+    let line = stdout.lines().find(|l| l.starts_with("TERRAFORGE_TERRAIN ")).expect("keine Ergebniszeile");
+    assert!(line.contains("mode=caves") && !line.contains("caves=0 "), "{line}");
+}
+
 /// Die Hauptszene (Kamera, Nebel, Wasser, Overlay) läuft 300 Frames ohne Skriptfehler.
 #[test]
 fn main_scene_runs_without_errors() {

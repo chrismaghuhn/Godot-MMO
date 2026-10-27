@@ -1,0 +1,15 @@
+[package]
+name = "terraforge-server"
+description = "Headless-Server: geheimer Untergrund, gefilterte Chunks für Clients (D-003, D-005, #56)"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "terraforge-server"
+path = "src/main.rs"
+
+[dependencies]
+# Der Server erzeugt den geheimen Untergrund (D-005).
+terraforge-core = { path = "../core", features = ["underground"] }
+terraforge-protocol = { path = "../protocol" }
+glam = "0.33"

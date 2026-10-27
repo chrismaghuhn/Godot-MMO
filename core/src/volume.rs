@@ -190,6 +190,7 @@ impl ColumnData {
 }
 
 /// Dichtefeld und Material eines Chunks inklusive einer Lage Rand-Samples zum Nachbarn.
+#[derive(Clone)]
 pub struct DensityChunk {
     pub position: IVec3,
     values: Vec<f32>,
@@ -280,6 +281,29 @@ impl DensityChunk {
         debug_assert!(density <= 0.0 || !material.is_air(), "festes Sample ohne Material ({x},{y},{z})");
         self.values[index] = density;
         self.materials[index] = if density <= 0.0 { MaterialId::AIR } else { material };
+    }
+
+    /// Rohdaten (Dichte, Material) aller Samples, z. B. zum Übertragen an einen Client (#56).
+    pub fn samples(&self) -> (&[f32], &[MaterialId]) {
+        (&self.values, &self.materials)
+    }
+
+    /// Chunk aus Rohdaten (Gegenstück zu `samples`). `None`, wenn die Längen nicht passen, eine
+    /// Dichte nicht endlich ist oder die Invariante Dichte <= 0 ⇔ Luft verletzt ist (Daten von
+    /// außen, z. B. vom Server).
+    pub fn from_samples(position: IVec3, values: Vec<f32>, materials: Vec<MaterialId>) -> Option<Self> {
+        let n = DENSITY_SAMPLES * DENSITY_SAMPLES * DENSITY_SAMPLES;
+        let valid = values.len() == n
+            && materials.len() == n
+            && values.iter().zip(&materials).all(|(&value, material)| value.is_finite() && (value <= 0.0) == material.is_air());
+        valid.then_some(Self { position, values, materials })
+    }
+
+    /// Bitgleich: gleiche Position, Dichten und Materialien.
+    pub fn same_as(&self, other: &DensityChunk) -> bool {
+        self.position == other.position
+            && self.materials == other.materials
+            && self.values.iter().zip(&other.values).all(|(a, b)| a.to_bits() == b.to_bits())
     }
 
     /// Weltposition der lokalen Koordinate (0, 0, 0).

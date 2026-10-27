@@ -9,6 +9,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Laufende Nummer: Tests einer Datei laufen parallel im selben Prozess.
@@ -67,6 +68,26 @@ impl Drop for TestProject {
     fn drop(&mut self) {
         std::fs::remove_dir_all(&self.0).ok();
     }
+}
+
+/// Baut den Server im Haupt-Workspace (einmal pro Test-Programm) und gibt den Pfad zurück.
+#[allow(dead_code)] // nur von einigen Test-Programmen genutzt
+pub fn server_binary() -> PathBuf {
+    static BUILT: OnceLock<PathBuf> = OnceLock::new();
+    BUILT
+        .get_or_init(|| {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+            let status = Command::new(env!("CARGO"))
+                .args(["build", "-q", "-p", "terraforge-server", "--manifest-path"])
+                .arg(root.join("Cargo.toml"))
+                // Eigener Workspace, eigener Target-Ordner (nicht der dieses Tests).
+                .env_remove("CARGO_TARGET_DIR")
+                .status()
+                .expect("cargo startet nicht");
+            assert!(status.success(), "Server nicht gebaut");
+            root.join("target/debug/terraforge-server").canonicalize().expect("Server-Programm fehlt")
+        })
+        .clone()
 }
 
 fn copy_dir(from: &Path, to: &Path) {

@@ -1,0 +1,12 @@
+[package]
+name = "terraforge-protocol"
+description = "Nachrichten zwischen Spiel-Client und Server, ohne geheimen Untergrund (D-005, #56)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Ohne Feature `underground`: Das Protokoll gehört auch zum Client (D-005).
+terraforge-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1.1", default-features = false, features = ["use-std"] }
+glam = "0.33"

@@ -1,5 +1,5 @@
 //! Client und Haupt-Workspace haben je ein eigenes `Cargo.lock` (D-005, #10). Weichen die
-//! Versionen der Abhängigkeiten von `terraforge-core` ab (z. B. `fastnoise-lite` nach einem
+//! Versionen der Abhängigkeiten von `terraforge-core` oder `terraforge-protocol` ab (z. B. `fastnoise-lite` nach einem
 //! `cargo update` nur in einem Workspace), erzeugten Client und Viewer/Server still verschiedene
 //! Welten. Dieser Test vergleicht sie.
 
@@ -52,9 +52,13 @@ fn closure(lock: &Lock, root: &str) -> BTreeSet<(String, String)> {
 #[test]
 fn core_dependencies_match_the_main_workspace() {
     let gdext = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let client = closure(&read_lock(&gdext.join("Cargo.lock")), "terraforge-core");
-    let main = closure(&read_lock(&gdext.join("../Cargo.lock")), "terraforge-core");
-    assert!(client.len() > 3, "Abhängigkeiten von terraforge-core nicht gefunden: {client:?}");
+    // Core und Protokoll: beide teilt der Client mit Viewer und Server.
+    let (client_lock, main_lock) = (read_lock(&gdext.join("Cargo.lock")), read_lock(&gdext.join("../Cargo.lock")));
+    let mut client = closure(&client_lock, "terraforge-core");
+    client.extend(closure(&client_lock, "terraforge-protocol"));
+    let mut main = closure(&main_lock, "terraforge-core");
+    main.extend(closure(&main_lock, "terraforge-protocol"));
+    assert!(client.iter().any(|(name, _)| name == "postcard"), "Abhängigkeiten des Protokolls nicht gefunden: {client:?}");
     // Im Haupt-Workspace kommen über Bevy weitere Features (und damit Pakete) dazu; jede Version,
     // die der Client für den Core nutzt, muss es dort aber genauso geben.
     let differing: Vec<_> = client.difference(&main).collect();

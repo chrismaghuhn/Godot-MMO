@@ -677,3 +677,35 @@ Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
 - Gemessen (30 s Autopilot, VSync): kein Frame über 16,7 ms, Upload unverändert Ø 0,4 ms.
 - Headless speichert Godot keine Instanz-Transforms (Dummy-Renderer). Deshalb prüft der Godot-Test
   nur Anzahlen; Transforms prüft ein Rust-Test, den freien Kreis ein Core-Test.
+
+**Umsetzung lokaler Server (#56, 2026-10-27):**
+- `protocol/` (Nachrichten, Längen-Präfix mit postcard über TCP, `NetworkSource`) und `server/`
+  (mit `underground`). Der Client meldet sich mit Protokoll-Version und öffentlichem Seed an; der
+  Server antwortet auf Chunk-Anfragen (`Mesh` wie `density_chunk`, `Full` wie `materials_chunk`)
+  in beliebiger Reihenfolge, Worker im Streamer warten auf ihre Antwort.
+- Der Server filtert Erze (nur freiliegende, 26 Nachbarn, D-018) und schickt nur, was von der
+  öffentlichen Oberfläche abweicht (`Diff` in Läufen, `Public`, `Empty`). Grund: Das Höhlen-Carving
+  verändert auch tief im Fels unsichtbar Dichten, nur ein Viertel der Oberflächen-Chunks ist
+  bitgleich; abweichend sind ≈ 16 % der Dichten und 2 % der Materialien.
+- Godot startet den Server als Kindprozess (`--exit-with-client`, Port aus der ersten Zeile der
+  Ausgabe) oder verbindet mit `host:port`. Fällt er aus, liefert `NetworkSource` die öffentliche
+  Oberfläche: Das Spiel läuft ohne Höhlen weiter.
+- Geprüft: Über das Netz kommen genau die gefilterten Chunks des Servers an; verborgene Erze
+  verlassen den Server nicht; falscher Seed wird abgelehnt; Server-Ausfall hängt nicht. In Godot
+  am Spawnpunkt 129 Höhlen-Chunks (12 sichtbar) und 7713 Bäume, genau wie im Viewer. Der
+  Release-Client enthält keinen Untergrund-Code (Server zum Vergleich 29 Treffer).
+- Gemessen (30 s Autopilot): mit Release-Server p99 16,75 ms; mit Debug-Server ruckelt es (66
+  Frames über 33 ms), deshalb nimmt der Client den neueren Build. Spalten-Jobs warten jetzt auf
+  den Server (Ø 16 ms statt 4 ms), halten aber Schritt.
+- Review-Funde behoben: Ein Panic in einem Server-Job (z. B. Koordinaten weit außerhalb der Welt,
+  im Debug-Build ein Überlauf) beendete einen Worker für immer; jetzt werden Positionen geprüft,
+  Jobs abgesichert, und der Client bekommt in beiden Fällen `Public`. Der Server endet auch, wenn
+  Godot vor der Verbindung abstürzt (Ende von stdin). Der Erz-Test prüft jetzt jedes Sample.
+- Bewusst so: Antwortet der Server einmal 10 s lang nicht, bleibt der Client für die Sitzung bei
+  der öffentlichen Oberfläche (kein Neuverbinden; schon gebaute Höhlen bleiben stehen).
+- "In der Nähe" (D-005) heißt in Phase 2: Oberflächen-Chunks im ganzen Sichtradius (mit flachen
+  Höhlen und dort freiliegenden Erzen, bis ~256 m bzw. 1 km), reine Höhlen-Chunks im Höhlenradius.
+- Nicht enthalten (Phase 6, #25/#26): Der Server prüft nicht, ob angefragte Chunks in der Nähe des
+  Spielers liegen (der Client kennt seine Position selbst, Bewegung ist noch nicht autoritativ),
+  keine Begrenzung der Warteschlangen und keine Schreib-Timeouts, keine Kompression über den Diff
+  hinaus, nur ein Client. Graben und Bauen über den Server kommt mit #14.

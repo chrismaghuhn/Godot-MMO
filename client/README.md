@@ -42,14 +42,22 @@ mkdir -p client/.godot && echo "res://terraforge.gdextension" > client/.godot/ex
 
 ```bash
 cargo build --manifest-path gdext/Cargo.toml
+cargo build -p terraforge-server --release
 godot --path client
 ```
+
+Höhlen und Erze kommen vom **lokalen Server** (`server/`, #56): Das Terrain startet ihn beim Start
+als Kindprozess (der neuere Build aus `target/release` bzw. `target/debug`; der Debug-Build ist zum
+schnellen Fliegen zu langsam) und beendet ihn mit dem Spiel. Ohne Server läuft alles, nur ohne
+Höhlen (Warnung im Log). `TERRAFORGE_SERVER=off` schaltet ihn ab, `TERRAFORGE_SERVER=host:port`
+verbindet mit einem laufenden Server (`terraforge-server --port 7777`). Den geheimen Seed liest der
+Server aus `TERRAFORGE_SECRET_SEED`, sonst nimmt er den unsicheren Entwickler-Seed.
 
 Die Startszene ([`scenes/main.tscn`](scenes/main.tscn), aufgebaut in
 [`scripts/main.gd`](scripts/main.gd)) streamt das Terrain um die Kamera (`TerraforgeTerrain`,
 #11), mit Fernterrain bis ~3,5 km, Nebel, Sonne und Wasser
-([`shaders/water.gdshader`](shaders/water.gdshader)) und Bäumen (MultiMesh pro Spalte, #12). Start
-am selben Spawnpunkt wie im Viewer. Höhlen kommen mit dem Server (#56).
+([`shaders/water.gdshader`](shaders/water.gdshader)), Bäumen (MultiMesh pro Spalte, #12) und Höhlen
+vom Server. Start am selben Spawnpunkt wie im Viewer.
 
 - **Steuerung:** WASD + Q/E fliegen, Shift schnell, rechte Maustaste halten zum Umsehen,
   F3 Overlay (Frametimes, Streaming, gezeichnete Objekte, Position, Biom).
@@ -71,7 +79,7 @@ GODOT=/pfad/zu/godot cargo test --manifest-path gdext/Cargo.toml
 
 startet Godot headless mit [`tests/gdext_smoke.gd`](tests/gdext_smoke.gd) (Höhe und Biom im Vergleich
 mit `terraforge-core`) und [`tests/terrain_smoke.gd`](tests/terrain_smoke.gd) (Streaming: Spalten,
-Meshes, Entfernen beim Weiterfliegen). Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
+Meshes, Entfernen beim Weiterfliegen, Höhlen vom Server). Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
 gebaute Bibliothek lädt; die des Editors bleibt unberührt. Ohne Godot (`GODOT` oder `godot` im
 `PATH`) schlägt er fehl. Außerdem prüft `gdext/tests/lockfiles.rs`, dass `gdext/Cargo.lock` für
 alle Abhängigkeiten des Cores dieselben Versionen hat wie das Haupt-`Cargo.lock` (sonst erzeugten

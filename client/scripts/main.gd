@@ -4,7 +4,8 @@
 # Umgebungsvariablen, soweit möglich wie im Viewer: TERRAFORGE_VIEW_RADIUS, TERRAFORGE_FAR
 # (0 = ohne Fernterrain), TERRAFORGE_AUTOPILOT (m/s nach +x), TERRAFORGE_BENCH (Sekunden, > 0),
 # TERRAFORGE_BENCH_OUT, TERRAFORGE_SHOT_AFTER (Frames, Standard 240), TERRAFORGE_PITCH/
-# TERRAFORGE_YAW (Grad), TERRAFORGE_CAM_Y (Kamera höher). Anders als im Viewer: TERRAFORGE_SEED
+# TERRAFORGE_YAW (Grad), TERRAFORGE_CAM_Y (Kamera höher), TERRAFORGE_SERVER (auto, off oder
+# host:port; Standard auto, siehe TerraforgeTerrain). Anders als im Viewer: TERRAFORGE_SEED
 # (im Viewer das erste Argument) und TERRAFORGE_SHOT ist der Pfad der PNG-Datei (im Viewer ein
 # Schalter für shots/auto.png).
 extends Node3D
@@ -39,6 +40,8 @@ func _ready() -> void:
 	# Wie im Viewer begrenzt (darüber ragt die Nahzone aus der feinen Fernstufe heraus).
 	terrain.view_radius = clampi(int(env_float("TERRAFORGE_VIEW_RADIUS", 8)), 1, 30)
 	terrain.far_terrain = env_float("TERRAFORGE_FAR", 1) != 0
+	if OS.has_environment("TERRAFORGE_SERVER"):
+		terrain.server = OS.get_environment("TERRAFORGE_SERVER")
 	var bench_seconds := env_float("TERRAFORGE_BENCH", 0.0)
 	terrain.record_job_times = bench_seconds > 0.0
 	add_child(terrain)
