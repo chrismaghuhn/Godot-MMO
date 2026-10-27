@@ -12,12 +12,14 @@
 //! - `ore_rules`: Regeln je Erz (Form, Wirtsgestein, Tiefe)
 //! - `ores`:      Platzierung der Erze (#45)
 //! - `visibility`: Erze für Clients verbergen, bis sie freiliegen (#46)
+//! - `mined`:     Reinheit, Provinz und Spurenelemente abgebauter Erze (#15)
 //!
 //! Regel: Der öffentliche Teil (`world`, `volume`, …) importiert nie etwas aus diesem Modul.
 //! Der Compiler erzwingt das, weil der öffentliche Teil auch ohne das Feature bauen muss.
 
 mod caves;
 mod grid;
+mod mined;
 mod ore_rules;
 mod ores;
 mod provinces;

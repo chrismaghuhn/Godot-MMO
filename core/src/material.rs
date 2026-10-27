@@ -63,6 +63,48 @@ pub struct Material {
     pub hardness: f32,
     /// g/cm³.
     pub density: f32,
+    /// Zähigkeit: 0 spröde (zerbricht) bis 1 zäh (verformt sich).
+    pub toughness: f32,
+    /// Wärmeleitfähigkeit in W/(m·K).
+    pub conductivity: f32,
+    /// Mögliche Spurenelemente mit höchstem Anteil in % des gewonnenen Metalls (bei Kohle: des
+    /// Brennstoffs). Wie viel eine Provinz davon hat, ist geheim (D-013, `underground`).
+    #[serde(default)]
+    pub traces: Vec<(TraceElement, f32)>,
+}
+
+/// Spurenelemente in Erzen (#15). Wichtig fürs Verhütten und Schmieden (D-019): Phosphor macht
+/// Eisen kaltbrüchig, Schwefel rotbrüchig, Nickel und Mangan zäher, Arsen härtet Kupfer, Silber
+/// macht Gold blasser.
+///
+/// Die Zahlen sind dauerhaft (gehen in Hashes und später in Speicherstände ein): nie ändern.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
+pub enum TraceElement {
+    Phosphorus = 1,
+    Sulfur = 2,
+    Manganese = 3,
+    Nickel = 4,
+    Arsenic = 5,
+    Silver = 6,
+    Copper = 7,
+    Antimony = 8,
+    Lead = 9,
+}
+
+impl TraceElement {
+    pub fn name(self) -> &'static str {
+        match self {
+            TraceElement::Phosphorus => "Phosphor",
+            TraceElement::Sulfur => "Schwefel",
+            TraceElement::Manganese => "Mangan",
+            TraceElement::Nickel => "Nickel",
+            TraceElement::Arsenic => "Arsen",
+            TraceElement::Silver => "Silber",
+            TraceElement::Copper => "Kupfer",
+            TraceElement::Antimony => "Antimon",
+            TraceElement::Lead => "Blei",
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -168,11 +210,16 @@ mod tests {
             }
             assert!((1.0..=10.0).contains(&material.hardness), "{}: Härte", material.key);
             assert!(material.density > 0.0, "{}: Dichte", material.key);
+            assert!((0.0..=1.0).contains(&material.toughness), "{}: Zähigkeit", material.key);
+            assert!(material.conductivity > 0.0, "{}: Wärmeleitfähigkeit", material.key);
+            for &(element, percent) in &material.traces {
+                assert!(percent > 0.0 && percent < 50.0, "{}: {element:?}", material.key);
+            }
         }
     }
 
     fn entry(id: u16, key: &str) -> String {
-        format!(r#"(id: {id}, key: "{key}", name: "x", category: Rock, color: (1, 2, 3), hardness: 5.0, density: 2.0)"#)
+        format!(r#"(id: {id}, key: "{key}", name: "x", category: Rock, color: (1, 2, 3), hardness: 5.0, density: 2.0, toughness: 0.5, conductivity: 2.0)"#)
     }
 
     fn list(entries: &[String]) -> String {

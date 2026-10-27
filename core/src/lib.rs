@@ -1,7 +1,8 @@
 //! terraforge-core: deterministische, engine-unabhängige Weltgenerierung.
 //!
-//! Öffentlich (darf jeder Client erzeugen): `world`, `biome`, `geology`, `material`, `noise`,
-//! `regions`, `vegetation`, `volume`, `mesh`, `lod`, `edits`, `occlusion`, `streaming`, `spawn`, `movement`. Geheim (nur mit Feature `underground`, D-005): `underground`.
+//! Öffentlich (darf jeder Client erzeugen): `world`, `biome`, `geology`, `material`, `properties`,
+//! `noise`, `regions`, `vegetation`, `volume`, `mesh`, `lod`, `edits`, `occlusion`, `streaming`,
+//! `spawn`, `movement`. Geheim (nur mit Feature `underground`, D-005): `underground`.
 
 pub mod biome;
 pub mod edits;
@@ -12,6 +13,7 @@ pub mod mesh;
 pub mod movement;
 pub mod noise;
 pub mod occlusion;
+pub mod properties;
 pub mod regions;
 pub mod spawn;
 pub mod streaming;

@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use terraforge_core::{
-    edits::action::{self, Action, TOOLS},
+    edits::action::{self, Action, Outcome, TOOLS},
     edits::{Voxel, WorldEdits, owner_chunk},
     volume::{CHUNK_SIZE, ColumnData, DensityChunk},
 };
@@ -45,6 +45,8 @@ impl Plugin for DigPlugin {
 pub struct DigStatus {
     pub tool: usize,
     pub last: String,
+    /// Werte des zuletzt abgebauten Materials (#15).
+    pub detail: String,
 }
 
 impl DigStatus {
@@ -175,6 +177,15 @@ fn dig_input(
 
     let outcome = action::apply(&mut edits, &world.0.materials, source, center, action);
     status.last = action::summary(&outcome, &world.0.materials, action);
+    // Werte des häufigsten abgebauten Materials an dieser Stelle (#15).
+    status.detail = match &outcome {
+        Outcome::Dug(result) => result.removed.iter().max_by_key(|(_, count)| **count).map_or_else(String::new, |(&material, _)| {
+            let voxel = center.round().as_ivec3();
+            let column = ColumnData::sample(&world.0, owner_chunk(voxel).x, owner_chunk(voxel).z);
+            underground.0.mined_sample(&world.0, &column, voxel, material).describe(&world.0)
+        }),
+        Outcome::Built(_) => String::new(),
+    };
     let affected = outcome.changed();
 
     xray_dirty.0.extend(affected.iter().copied());

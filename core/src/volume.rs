@@ -149,6 +149,13 @@ impl ColumnData {
         &self.geology[(local_z - SAMPLE_MIN) as usize * COLUMN_SAMPLES + (local_x - SAMPLE_MIN) as usize]
     }
 
+    /// Öffentliches Material eines Voxels (wie in `DensityChunk::from_column`, ohne Erze und
+    /// Höhlen) an lokaler Spaltenkoordinate `0..CHUNK_SIZE`; Luft über der Oberfläche.
+    pub fn public_material(&self, local_x: i32, world_y: i32, local_z: i32) -> MaterialId {
+        let density = self.height(local_x, local_z) - world_y as f32;
+        if density > 0.0 { material_at(self.geology(local_x, local_z), density, world_y as f32) } else { MaterialId::AIR }
+    }
+
     /// Fluss-Faktor (0..1) an lokaler Spaltenkoordinate (`-1..=CHUNK_SIZE + 1`).
     #[inline]
     pub fn river(&self, local_x: i32, local_z: i32) -> f32 {

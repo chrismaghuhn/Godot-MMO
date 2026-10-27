@@ -134,7 +134,8 @@ fn perf_overlay(
          Spalten {:>3}   3D-Chunks {:>4} (Höhlen {:>3}, sichtbar {:>3})   Jobs {:>1}+{:<1} / {:<1}   Trees {:>5}   Fern {:>3}   Seed {}\n\
          X {:>7.1}   Y {:>6.1}   Z {:>7.1}   {}   [F3]\n\
          {} ({})   Boden {:.0}m   T{:+.2}   H{:+.2}\n\
-         [Klick] graben  [B] bauen  [X] fällen  [R] Röntgen  [T] {}   {}",
+         [Klick] graben  [B] bauen  [X] fällen  [R] Röntgen  [T] {}   {}\n\
+         {}",
         fps,
         avg,
         p95,
@@ -160,6 +161,7 @@ fn perf_overlay(
         sample.humidity,
         ctx.dig.tool_label(),
         ctx.dig.last,
+        ctx.dig.detail,
     );
     color.0 = if p95 <= 16.7 {
         Color::srgb(0.55, 1.0, 0.55)

@@ -2,6 +2,7 @@ use crate::biome::{BiomeRegistry, FamilyKind};
 use crate::geology::Geology;
 use crate::material::MaterialRegistry;
 use crate::noise::NoiseBank;
+use crate::properties::PropertyNoise;
 use crate::regions::{RegionId, RegionMap, RegionSample, RegionTheme};
 
 /// Wassertiefe in der Flussmitte.
@@ -61,6 +62,7 @@ pub struct WorldGen {
     pub geology: Geology,
     pub regions: RegionMap,
     noise: NoiseBank,
+    pub(crate) property_noise: PropertyNoise,
 }
 
 impl WorldGen {
@@ -76,6 +78,7 @@ impl WorldGen {
             materials: MaterialRegistry::load(),
             regions: RegionMap::new(seed),
             noise: NoiseBank::new(seed),
+            property_noise: PropertyNoise::new(seed),
         }
     }
 

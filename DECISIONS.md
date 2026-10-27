@@ -806,3 +806,30 @@ Inventar im Client (schneller gebaut, müsste für Multiplayer umziehen).
 Grundlage für Schmieden (D-019, `materialien` mit Provinz, Reinheit, Spurenelementen). Zum
 Stapeln im Inventar müssen die Werte gerundet werden (festzulegen mit #18). Das Protokoll wächst um
 Inventar-Nachrichten.
+
+**Umsetzung Materialeigenschaften (#15, 2026-10-27):**
+- `materials.ron`: zu Härte und Dichte kommen Zähigkeit (0 spröde bis 1 zäh) und
+  Wärmeleitfähigkeit (W/(m·K)), reale Richtwerte. Erze nennen ihre möglichen Spurenelemente mit
+  höchstem Anteil (z. B. Eisenerz: Phosphor, Schwefel, Mangan, Nickel; Golderz: Silber, Kupfer).
+- `core/src/properties.rs` (öffentlich): `WorldGen::mined_sample(voxel, material)` wandelt die
+  Grundwerte ab: je Region und Eigenschaft ein fester Faktor (±10 %, an Grenzen stetig gemischt),
+  innerhalb der Region Noise (±4 %, ≈ 200 m), mit der Tiefe härter und dichter (+3 % bzw. +2 % je
+  100 m, bis 200 m). Ergebnis `MinedSample` mit Material, Region und Werten.
+- `underground/mined.rs` (geheim): Erze bekommen Reinheit (schon aus #45), Provinz und
+  Spurenelemente. Werte eines unreinen Stücks liegen zwischen taubem Gestein und Mineral (nach
+  Reinheit gemischt); die Spurenelemente sind je Provinz und Erz fest, reinere Erze haben weniger.
+- Der Viewer zeigt nach dem Graben die Werte des häufigsten abgebauten Materials. Im Godot-Client
+  werden sie mit dem Inventar (#18) sichtbar; dort rechnet sie der Server.
+- Die Werkzeug-Prüfung nutzt weiter die Grundhärte: Ob die Schaufel etwas schafft, soll nicht
+  unsichtbar vom Ort abhängen. Spurenelemente zählen in % des gewonnenen Metalls (Silber im Gold
+  ergibt Elektrum), bei Kohle des Brennstoffs.
+- Review-Funde behoben: Das taube Gestein war immer der Platzhalter „Gestein“ (unreiner Goldsand
+  wurde fast so hart wie Granit, reinerer leichter); jetzt das öffentliche Gestein an der Fundstelle
+  bzw. das erste Wirtsgestein der Erz-Regel. Die Provinz stand als Rasterzelle im Ergebnis (aus
+  Items hätten sich Lage und Grenzen der Provinzen ablesen lassen); jetzt eine undurchsichtige
+  Kennung. Die Hashes der Spurenelemente hängen an Material-ID und festen Element-Nummern statt an
+  der Reihenfolge der Enums. Mehrere Tests bewiesen ihre Aussage nicht (Vergleich einer Funktion
+  mit sich selbst, zu weite Toleranzen, Testlinie fast ohne Regionsgrenze).
+- Vorgabe für #18 (Review-Fund): Die Werte gelten für natürlich gewachsenes Material. Gebautes
+  behält die Werte des Items, sonst ließe sich Erz durch Ablegen in einer reichen Provinz veredeln.
+

@@ -74,7 +74,7 @@ Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 
 ## Phase 3: Ressourcen und Biome mit Inhalt
 
-- [ ] Materialien mit Eigenschaften (Härte, Dichte, Reinheit, …), abgeleitet aus Ort/Gestein: #15
+- [x] Materialien mit Eigenschaften (Härte, Dichte, Reinheit, …), abgeleitet aus Ort/Gestein: #15
 - [ ] Biom-Varianten mit Daten (Bedingungen, Vegetation, Ressourcen), Wahl nach Bedingungen statt zufällig: #16
 - [ ] Erste 30-40 Biome vollständig ausbauen (D-009): #17
 - [ ] Abbauen + einfaches Inventar: #18

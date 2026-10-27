@@ -5,45 +5,50 @@
 //
 // Kategorien: Soil (Boden), Rock (Gestein), Ore (Erz), Special (Spezialmaterial).
 // color: natürliche Farbe; accent (optional, `Some((r, g, b))`): Sprenkel/Glanz für Erze.
-// hardness: grob nach Mohs (1-10); density: g/cm³ (reale Richtwerte).
+// hardness: grob nach Mohs (1-10); density: g/cm³; toughness: Zähigkeit 0 (spröde) bis 1 (zäh);
+// conductivity: Wärmeleitfähigkeit in W/(m·K) (reale Richtwerte). Das sind Grundwerte: Beim Abbau
+// werden sie nach Ort abgewandelt (#15, D-022).
+// traces (optional, Erze): mögliche Spurenelemente mit höchstem Anteil in % des gewonnenen Metalls
+// (bei Kohle: des Brennstoffs; Silber im Gold ergibt Elektrum). Wie viel davon eine Provinz
+// wirklich hat, ist geheim (D-013).
 // Ob ein Material öffentlich erzeugt werden darf, bestimmt nicht diese Datei, sondern der
 // Generator (Erze nur im geheimen Untergrund).
 (
   materials: [
     // Platzhalter, bis Gesteinsschichten existieren (#44). Farbe = bisherige Fels-Farbe.
-    (id: 1, key: "stone", name: "Gestein", category: Rock, color: (112, 106, 100), hardness: 5.0, density: 2.6),
+    (id: 1, key: "stone", name: "Gestein", category: Rock, color: (112, 106, 100), hardness: 5.0, density: 2.6, toughness: 0.5, conductivity: 2.5),
 
     // Boden
-    (id: 2, key: "dirt", name: "Erde", category: Soil, color: (110, 82, 58), hardness: 1.5, density: 1.4),
-    (id: 3, key: "sand", name: "Sand", category: Soil, color: (214, 196, 148), hardness: 1.5, density: 1.6),
-    (id: 4, key: "gravel", name: "Kies", category: Soil, color: (138, 132, 124), hardness: 2.5, density: 1.8),
-    (id: 5, key: "clay", name: "Ton", category: Soil, color: (160, 112, 86), hardness: 1.5, density: 1.8),
-    (id: 6, key: "snow", name: "Schnee", category: Soil, color: (236, 242, 248), hardness: 1.0, density: 0.4),
-    (id: 7, key: "ice", name: "Eis", category: Soil, color: (184, 214, 232), hardness: 1.5, density: 0.92),
+    (id: 2, key: "dirt", name: "Erde", category: Soil, color: (110, 82, 58), hardness: 1.5, density: 1.4, toughness: 0.15, conductivity: 0.5),
+    (id: 3, key: "sand", name: "Sand", category: Soil, color: (214, 196, 148), hardness: 1.5, density: 1.6, toughness: 0.05, conductivity: 0.3),
+    (id: 4, key: "gravel", name: "Kies", category: Soil, color: (138, 132, 124), hardness: 2.5, density: 1.8, toughness: 0.2, conductivity: 0.7),
+    (id: 5, key: "clay", name: "Ton", category: Soil, color: (160, 112, 86), hardness: 1.5, density: 1.8, toughness: 0.2, conductivity: 1.0),
+    (id: 6, key: "snow", name: "Schnee", category: Soil, color: (236, 242, 248), hardness: 1.0, density: 0.4, toughness: 0.05, conductivity: 0.2),
+    (id: 7, key: "ice", name: "Eis", category: Soil, color: (184, 214, 232), hardness: 1.5, density: 0.92, toughness: 0.2, conductivity: 2.2),
 
     // Gestein
-    (id: 10, key: "sandstone", name: "Sandstein", category: Rock, color: (196, 160, 112), hardness: 6.0, density: 2.3),
-    (id: 11, key: "limestone", name: "Kalkstein", category: Rock, color: (196, 190, 172), hardness: 3.0, density: 2.6),
-    (id: 12, key: "slate", name: "Schiefer", category: Rock, color: (84, 88, 96), hardness: 3.5, density: 2.8),
-    (id: 13, key: "granite", name: "Granit", category: Rock, color: (150, 136, 132), hardness: 6.5, density: 2.7),
-    (id: 14, key: "basalt", name: "Basalt", category: Rock, color: (62, 62, 66), hardness: 6.0, density: 3.0),
-    (id: 15, key: "marble", name: "Marmor", category: Rock, color: (222, 220, 214), hardness: 3.0, density: 2.7),
+    (id: 10, key: "sandstone", name: "Sandstein", category: Rock, color: (196, 160, 112), hardness: 6.0, density: 2.3, toughness: 0.35, conductivity: 2.5),
+    (id: 11, key: "limestone", name: "Kalkstein", category: Rock, color: (196, 190, 172), hardness: 3.0, density: 2.6, toughness: 0.4, conductivity: 2.2),
+    (id: 12, key: "slate", name: "Schiefer", category: Rock, color: (84, 88, 96), hardness: 3.5, density: 2.8, toughness: 0.55, conductivity: 2.0),
+    (id: 13, key: "granite", name: "Granit", category: Rock, color: (150, 136, 132), hardness: 6.5, density: 2.7, toughness: 0.65, conductivity: 2.8),
+    (id: 14, key: "basalt", name: "Basalt", category: Rock, color: (62, 62, 66), hardness: 6.0, density: 3.0, toughness: 0.75, conductivity: 1.7),
+    (id: 15, key: "marble", name: "Marmor", category: Rock, color: (222, 220, 214), hardness: 3.0, density: 2.7, toughness: 0.4, conductivity: 2.8),
 
     // Erze
-    (id: 30, key: "coal", name: "Kohle", category: Ore, color: (36, 34, 34), accent: Some((90, 90, 104)), hardness: 2.0, density: 1.4),
-    (id: 31, key: "copper_ore", name: "Kupfererz", category: Ore, color: (82, 140, 116), accent: Some((40, 200, 150)), hardness: 3.5, density: 4.0),
-    (id: 32, key: "tin_ore", name: "Zinnerz", category: Ore, color: (122, 112, 104), accent: Some((200, 208, 218)), hardness: 6.5, density: 6.9),
-    (id: 33, key: "iron_ore", name: "Eisenerz", category: Ore, color: (140, 72, 52), accent: Some((200, 90, 40)), hardness: 5.5, density: 5.2),
-    (id: 34, key: "silver_ore", name: "Silbererz", category: Ore, color: (168, 172, 180), accent: Some((236, 240, 250)), hardness: 2.5, density: 7.2),
-    (id: 35, key: "gold_ore", name: "Golderz", category: Ore, color: (212, 176, 64), accent: Some((255, 214, 40)), hardness: 3.0, density: 8.0),
+    (id: 30, key: "coal", name: "Kohle", category: Ore, color: (36, 34, 34), accent: Some((90, 90, 104)), hardness: 2.0, density: 1.4, toughness: 0.25, conductivity: 0.25, traces: [(Sulfur, 3.0), (Phosphorus, 0.1)]),
+    (id: 31, key: "copper_ore", name: "Kupfererz", category: Ore, color: (82, 140, 116), accent: Some((40, 200, 150)), hardness: 3.5, density: 4.0, toughness: 0.4, conductivity: 3.5, traces: [(Arsenic, 1.0), (Silver, 0.5), (Sulfur, 2.0)]),
+    (id: 32, key: "tin_ore", name: "Zinnerz", category: Ore, color: (122, 112, 104), accent: Some((200, 208, 218)), hardness: 6.5, density: 6.9, toughness: 0.5, conductivity: 4.0, traces: [(Arsenic, 0.5), (Copper, 1.0)]),
+    (id: 33, key: "iron_ore", name: "Eisenerz", category: Ore, color: (140, 72, 52), accent: Some((200, 90, 40)), hardness: 5.5, density: 5.2, toughness: 0.55, conductivity: 5.0, traces: [(Phosphorus, 0.6), (Sulfur, 0.4), (Manganese, 1.5), (Nickel, 3.0)]),
+    (id: 34, key: "silver_ore", name: "Silbererz", category: Ore, color: (168, 172, 180), accent: Some((236, 240, 250)), hardness: 2.5, density: 7.2, toughness: 0.35, conductivity: 4.0, traces: [(Copper, 3.0), (Antimony, 1.0), (Lead, 4.0)]),
+    (id: 35, key: "gold_ore", name: "Golderz", category: Ore, color: (212, 176, 64), accent: Some((255, 214, 40)), hardness: 3.0, density: 8.0, toughness: 0.4, conductivity: 3.0, traces: [(Silver, 20.0), (Copper, 2.0)]),
     // Seifengold: goldhaltiger Sand, liegt in Flussablagerungen unter der sichtbaren Schicht.
-    (id: 36, key: "gold_sand", name: "Goldsand", category: Ore, color: (220, 190, 120), accent: Some((255, 200, 40)), hardness: 1.5, density: 2.4),
+    (id: 36, key: "gold_sand", name: "Goldsand", category: Ore, color: (220, 190, 120), accent: Some((255, 200, 40)), hardness: 1.5, density: 2.4, toughness: 0.05, conductivity: 0.4, traces: [(Silver, 12.0)]),
 
     // Spezialmaterialien (an Biome/Regionen gebunden)
-    (id: 50, key: "quartz", name: "Quarz", category: Special, color: (226, 232, 240), accent: Some((255, 255, 255)), hardness: 7.0, density: 2.65),
-    (id: 51, key: "obsidian", name: "Obsidian", category: Special, color: (28, 24, 36), accent: Some((110, 60, 170)), hardness: 5.5, density: 2.4),
-    (id: 52, key: "sulfur", name: "Schwefel", category: Special, color: (226, 206, 60), accent: Some((255, 244, 90)), hardness: 2.0, density: 2.1),
-    (id: 53, key: "magnetite", name: "Magnetit", category: Special, color: (48, 48, 54), accent: Some((120, 130, 170)), hardness: 6.0, density: 5.2),
-    (id: 54, key: "cinnabar", name: "Zinnober", category: Special, color: (180, 40, 36), accent: Some((240, 40, 40)), hardness: 2.5, density: 8.1),
+    (id: 50, key: "quartz", name: "Quarz", category: Special, color: (226, 232, 240), accent: Some((255, 255, 255)), hardness: 7.0, density: 2.65, toughness: 0.45, conductivity: 6.5),
+    (id: 51, key: "obsidian", name: "Obsidian", category: Special, color: (28, 24, 36), accent: Some((110, 60, 170)), hardness: 5.5, density: 2.4, toughness: 0.15, conductivity: 1.4),
+    (id: 52, key: "sulfur", name: "Schwefel", category: Special, color: (226, 206, 60), accent: Some((255, 244, 90)), hardness: 2.0, density: 2.1, toughness: 0.1, conductivity: 0.27),
+    (id: 53, key: "magnetite", name: "Magnetit", category: Special, color: (48, 48, 54), accent: Some((120, 130, 170)), hardness: 6.0, density: 5.2, toughness: 0.5, conductivity: 5.1, traces: [(Manganese, 1.0), (Nickel, 1.0)]),
+    (id: 54, key: "cinnabar", name: "Zinnober", category: Special, color: (180, 40, 36), accent: Some((240, 40, 40)), hardness: 2.5, density: 8.1, toughness: 0.3, conductivity: 1.5),
   ],
 )

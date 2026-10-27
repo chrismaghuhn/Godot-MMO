@@ -95,7 +95,7 @@ impl RegionMap {
         h
     }
 
-    fn unit(&self, id: RegionId, salt: u64) -> f32 {
+    pub(crate) fn unit(&self, id: RegionId, salt: u64) -> f32 {
         (self.hash(id, salt) >> 40) as f32 / (1u64 << 24) as f32
     }
 
