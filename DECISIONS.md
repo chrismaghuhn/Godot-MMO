@@ -772,6 +772,37 @@ Clients gilt weiter die Regel zur Feature-Vereinigung aus D-005.
   server-autoritativ ist, kann ein Client an beliebiger Stelle graben und über Annahme/Ablehnung
   abtasten, ob ein Punkt Luft ist. Aktionen laufen samt Chunk-Erzeugung unter einem Lock im
   gemeinsamen Worker-Pool; viele Aktionen an kalten Stellen bremsen das Streaming (mit #25 eigene
-  Queue). Bäume
-  fällen gibt es im Godot-Client noch nicht (im Viewer X; mit #21). Änderungen gehen beim Beenden
-  verloren (Speichern mit #19).
+  Queue). Bäume fällen gibt es im Godot-Client noch nicht (im Viewer X; mit #21). Änderungen gehen
+  beim Beenden verloren (Speichern mit #19).
+
+## D-022: Phase 3, Spielkreislauf vor Biom-Inhalt
+- Datum: 2026-10-27
+- Status: angenommen
+
+**Kontext:** Phase 3 bringt Ressourcen und Biome mit Inhalt (#15-#19, #48, dazu #54 und #58). Offen
+waren die Reihenfolge, wie Materialeigenschaften entstehen, wo das Inventar lebt und wie die
+ersten 30-40 Biome ausgewählt werden.
+
+**Entscheidung:**
+- **Reihenfolge:** zuerst der Kreislauf Sammeln → Behalten (D-010): #15 Materialeigenschaften →
+  #18 Abbauen und Inventar (mit Bäume fällen im Godot-Client und #58 Kollision mit Stämmen) →
+  #19 Speichern. Danach #16 Biom-Varianten mit Daten → #17 Biome ausbauen → #48
+  Oberflächen-Hinweise → #54 Bäume im Fernterrain.
+- **Eigenschaften beim Abbau berechnet (#15):** Grundwerte pro Material in `materials.ron`; beim
+  Abbauen werden sie deterministisch nach Ort abgewandelt (Region, Provinz, Tiefe, Gestein), und das
+  Item trägt die Werte. Bei Erzen rechnet das nur der Server (Provinzen, Reinheit und
+  Spurenelemente sind geheim, D-013). Kein Wert pro Voxel im Dichtefeld.
+- **Inventar auf dem Server (#18):** Der lokale Server führt das Inventar, Godot zeigt es nur an.
+  Graben legt die Ausbeute hinein, Bauen verbraucht daraus. So stimmt es schon für Phase 6, und ein
+  Client kann keine Ausbeute fälschen.
+- **Biome (#17):** Claude schlägt eine Auswahl über alle Familien vor (mit Begründung), der Nutzer
+  streicht oder tauscht.
+
+**Alternativen:** Biom-Inhalt zuerst (schönere Welt, aber noch nichts zu tun); Werte pro Voxel
+(genauer, aber viel mehr Speicher und Netzlast); feste Werte pro Material (widerspricht #15);
+Inventar im Client (schneller gebaut, müsste für Multiplayer umziehen).
+
+**Folgen:** Items sind mehr als „Material × Anzahl“: Sie tragen Herkunft und Werte, die
+Grundlage für Schmieden (D-019, `materialien` mit Provinz, Reinheit, Spurenelementen). Zum
+Stapeln im Inventar müssen die Werte gerundet werden (festzulegen mit #18). Das Protokoll wächst um
+Inventar-Nachrichten.
