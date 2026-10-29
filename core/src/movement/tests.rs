@@ -335,3 +335,29 @@ fn walking_away_from_a_wall_is_not_blocked() {
 }
 
 
+
+/// Bergab gleichmäßig, ohne Sprünge von Frame zu Frame (Review-Fund #58: Das Nachführen am Boden
+/// schob die Probe entlang der Hangnormalen, also auch waagerecht; jeder zweite Schritt war 2-3×
+/// so lang).
+#[test]
+fn walking_downhill_is_smooth() {
+    let settings = Settings::default();
+    for steepness in [0.3, 0.5, 0.9] {
+        let slope = Field(move |p: Vec3| 10.0 - steepness * p.z - p.y);
+        let mut body = Body::new(Vec3::new(0.5, 12.0, -10.0));
+        run(&mut body, Input::default(), 1.0, &slope);
+        // Bergab ist +z (Blick nach +z: yaw = 180°).
+        let input = Input { yaw: std::f32::consts::PI, ..walk(1.0) };
+        run(&mut body, input, 0.5, &slope);
+        let longest = settings.walk_speed * DT * (1.0 + steepness * steepness).sqrt();
+        for _ in 0..120 {
+            let before = body.position;
+            body.step(input, DT, &settings, &slope);
+            let step = body.position.distance(before);
+            assert!(step < longest * 1.5, "Hang {steepness}: Schritt {step:.3} m statt ≈ {longest:.3} bei {}", body.position);
+        }
+    }
+}
+
+#[path = "trunk_tests.rs"]
+mod trunks;

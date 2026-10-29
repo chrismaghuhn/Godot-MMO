@@ -61,8 +61,8 @@ vom Server. Start am selben Spawnpunkt wie im Viewer.
 
 - **Steuerung** (Ich-Perspektive, #13): WASD laufen, Leertaste springen, Shift rennen, F zwischen
   Laufen und Fliegen wechseln (Fliegen ohne Kollision, Q/E runter/hoch), rechte Maustaste halten
-  zum Umsehen, F3 Overlay (Frametimes, Streaming, gezeichnete Objekte, Position, Biom). Bäume
-  haben noch keine Kollision (#58).
+  zum Umsehen, F3 Overlay (Frametimes, Streaming, gezeichnete Objekte, Position, Biom). Baumstämme
+  halten den Spieler auf (#58), Kronen nicht.
 - **Graben und Bauen** (#14, wie im Viewer): Linksklick gräbt eine Kugel (2 m) unter dem
   Fadenkreuz, B baut (1,5 m, aus dem Inventar), T wechselt das Werkzeug (Härte-Stufen, echte Werkzeuge mit
   #21). Reichweite 8 m. Mit Server schickt der Client nur Blick und Aktion; der Server bestimmt das
@@ -94,8 +94,8 @@ startet Godot headless mit [`tests/gdext_smoke.gd`](tests/gdext_smoke.gd) (Höhe
 mit `terraforge-core`) und [`tests/terrain_smoke.gd`](tests/terrain_smoke.gd) (Streaming: Spalten,
 Meshes, Entfernen beim Weiterfliegen, Höhlen vom Server), [`tests/player_smoke.gd`](tests/player_smoke.gd)
 (Laufen und Springen) und [`tests/dig_smoke.gd`](tests/dig_smoke.gd) (Graben und Bauen mit und ohne
-Server, neuer Stand auch in der Kollision, Inventar) und [`tests/fell_smoke.gd`](tests/fell_smoke.gd)
-(Bäume fällen). Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
+Server, neuer Stand auch in der Kollision, Inventar), [`tests/fell_smoke.gd`](tests/fell_smoke.gd)
+(Bäume fällen) und [`tests/trunk_smoke.gd`](tests/trunk_smoke.gd) (Stämme halten auf, gefällte nicht). Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
 gebaute Bibliothek lädt; die des Editors bleibt unberührt. Ohne Godot (`GODOT` oder `godot` im
 `PATH`) schlägt er fehl. Außerdem prüft `gdext/tests/lockfiles.rs`, dass `gdext/Cargo.lock` für
 alle Abhängigkeiten des Cores dieselben Versionen hat wie das Haupt-`Cargo.lock` (sonst erzeugten

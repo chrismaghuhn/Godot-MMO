@@ -6,10 +6,13 @@
 //! die Kugel zu tief, wird sie entlang der Normalen herausgeschoben und die Geschwindigkeit in die
 //! Fläche hinein entfernt. Berührte Wände merkt sich der Körper für den nächsten Schritt (Gleiten),
 //! sonst drückte jede neue Eingabe wieder hinein und die Kamera zitterte (Review-Fund).
+//!
+//! Baumstämme (#58) sind Kapseln; Abstand und Normale kommen dort direkt aus der Geometrie, sonst
+//! gilt dasselbe wie beim Gelände.
 
 use glam::{IVec3, Vec3};
 
-use super::{DensitySource, Settings};
+use super::{DensitySource, Settings, Trunk};
 
 /// Wiederholungen pro Teilschritt (Ecken und Kanten brauchen mehrere).
 const ITERATIONS: usize = 4;
@@ -54,6 +57,27 @@ pub(super) struct Contact {
     pub(super) stuck: bool,
 }
 
+/// Abstand von `point` zur Oberfläche eines Stamms und Normale nach außen.
+fn trunk_surface(trunk: &Trunk, point: Vec3) -> (f32, Vec3) {
+    let closest = Vec3::new(trunk.base.x, point.y.clamp(trunk.base.y, trunk.base.y + trunk.height), trunk.base.z);
+    let offset = point - closest;
+    let length = offset.length();
+    // Genau auf der Achse: irgendeine waagerechte Richtung (kommt praktisch nicht vor).
+    let normal = if length > 1e-5 { offset / length } else { Vec3::X };
+    (length - trunk.radius, normal)
+}
+
+/// Liegt `point` in einem der Stämme?
+pub(super) fn in_trunk(trunks: &[Trunk], point: Vec3) -> bool {
+    trunks.iter().any(|trunk| trunk_surface(trunk, point).0 < 0.0)
+}
+
+/// Nächste Fläche (Gelände oder Stamm) an `point`: Abstand und Normale nach außen.
+fn nearest(field: &impl DensitySource, trunks: &[Trunk], point: Vec3) -> Option<(f32, Vec3)> {
+    let terrain = surface(field, point);
+    trunks.iter().map(|trunk| trunk_surface(trunk, point)).chain(terrain).min_by(|a, b| a.0.total_cmp(&b.0))
+}
+
 /// Distanz zur Fläche und Normale (nach außen) an `point`; `None`, wo das Feld flach ist.
 pub(super) fn surface(field: &impl DensitySource, point: Vec3) -> Option<(f32, Vec3)> {
     let (density, gradient) = sample(field, point);
@@ -66,41 +90,71 @@ pub(super) fn surface(field: &impl DensitySource, point: Vec3) -> Option<(f32, V
 /// Wand knapp vor dem Körper gilt weiter als berührt, sonst liefe er im nächsten Schritt wieder
 /// hinein (Review-Fund: Zittern an Wänden, weil die Kante zwischen Boden und Wand im
 /// interpolierten Feld eine 45°-Rampe ist, die der Körper immer wieder hinaufläuft).
-pub(super) fn resolve(position: &mut Vec3, velocity: &mut Vec3, settings: &Settings, field: &impl DensitySource) -> Contact {
+pub(super) fn resolve(position: &mut Vec3, velocity: &mut Vec3, settings: &Settings, field: &impl DensitySource, trunks: &[Trunk]) -> Contact {
     let r = settings.radius;
     let centers = [r, settings.height * 0.5, settings.height - r];
     let mut contact = Contact::default();
     for _ in 0..ITERATIONS {
         let mut moved = false;
         for &offset in &centers {
-            let Some((distance, normal)) = surface(field, *position + Vec3::Y * offset) else { continue };
-            if distance >= r {
-                continue;
+            // Gelände und jeder Stamm einzeln: Eine Kugel kann zugleich am Hang und am Stamm liegen.
+            // Jede Fläche sieht die Lage nach dem vorigen Herausschieben.
+            let terrain = surface(field, *position + Vec3::Y * offset);
+            for index in 0..=trunks.len() {
+                let point = *position + Vec3::Y * offset;
+                let found = match index {
+                    0 => terrain,
+                    _ => Some(trunk_surface(&trunks[index - 1], point)),
+                };
+                let Some((distance, normal)) = found else { continue };
+                if distance >= r {
+                    continue;
+                }
+                *position += normal * (r - distance);
+                let into = velocity.dot(normal);
+                if into < 0.0 {
+                    *velocity -= normal * into;
+                }
+                add_wall(&mut contact, normal, settings);
+                moved = true;
             }
-            *position += normal * (r - distance);
-            let into = velocity.dot(normal);
-            if into < 0.0 {
-                *velocity -= normal * into;
-            }
-            add_wall(&mut contact, normal, settings);
-            moved = true;
         }
         if !moved {
             break;
         }
     }
     for (index, &offset) in centers.iter().enumerate() {
-        let Some((distance, normal)) = surface(field, *position + Vec3::Y * offset) else { continue };
-        if distance < r - STUCK_TOLERANCE {
-            contact.stuck = true;
+        let point = *position + Vec3::Y * offset;
+        let terrain = surface(field, point);
+        for (distance, normal) in terrain.into_iter().chain(trunks.iter().map(|trunk| trunk_surface(trunk, point))) {
+            if distance < r - STUCK_TOLERANCE {
+                contact.stuck = true;
+            }
+            if distance >= r + CONTACT_TOLERANCE {
+                continue;
+            }
+            contact.ground |= index == 0 && normal.y >= settings.max_slope;
+            add_wall(&mut contact, normal, settings);
         }
-        if distance >= r + CONTACT_TOLERANCE {
-            continue;
-        }
-        contact.ground |= index == 0 && normal.y >= settings.max_slope;
-        add_wall(&mut contact, normal, settings);
     }
     contact
+}
+
+/// Wie weit (m) die Kapsel senkrecht sinken müsste, bis die untere Kugel begehbaren Boden berührt;
+/// `None`, wenn darunter innerhalb von `snap` keiner ist. Aus Abstand und Normale der nächsten
+/// Fläche: Auf einer Ebene mit Normale `n` ist der senkrechte Abstand `abstand / n.y`; zweimal
+/// gerechnet, weil Gelände gekrümmt ist.
+pub(super) fn ground_below(position: Vec3, settings: &Settings, field: &impl DensitySource, trunks: &[Trunk]) -> Option<f32> {
+    let r = settings.radius;
+    let mut drop = 0.0;
+    for _ in 0..2 {
+        let (distance, normal) = nearest(field, trunks, position + Vec3::Y * (r - drop))?;
+        if normal.y < settings.max_slope {
+            return None;
+        }
+        drop += (distance - r) / normal.y;
+    }
+    (drop >= 0.0 && drop <= settings.snap).then_some(drop + CONTACT_TOLERANCE * 0.5)
 }
 
 /// Merkt sich eine Wand oder einen Steilhang (Normale steiler als `max_slope`) als waagerechte

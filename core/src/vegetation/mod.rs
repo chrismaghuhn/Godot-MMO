@@ -18,7 +18,7 @@ use glam::Vec3;
 
 pub use geometry::build_tree_geometry;
 pub use placement::plan_trees;
-pub use standing::{SPAWN_CLEARING, column_trees, felling_yield, pick_tree, targeted_tree};
+pub use standing::{SPAWN_CLEARING, column_trees, felling_yield, pick_tree, targeted_tree, trunk};
 pub use support::{GROUND_SEARCH, settle_tree};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

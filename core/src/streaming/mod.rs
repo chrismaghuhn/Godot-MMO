@@ -42,8 +42,9 @@ use glam::{IVec2, IVec3, Vec2, Vec3};
 use crate::WorldGen;
 use crate::edits::WorldEdits;
 use crate::mesh::ChunkMesh;
+use crate::movement::Trunk;
 use crate::occlusion::FaceLinks;
-use crate::vegetation::TreePlacement;
+use crate::vegetation::{TreeId, TreePlacement};
 use crate::volume::ColumnData;
 
 pub use far::{FAR_GUARANTEED, FAR_VIEW, FarKey, MAX_VIEW_RADIUS};
@@ -300,6 +301,18 @@ impl<M: Send + 'static> Streamer<M> {
     /// bekommen den Stand ohnehin beim Laden.
     pub fn mark_column_changed(&mut self, column: IVec2) {
         self.dirty.columns.insert(column);
+    }
+
+    /// Ein gefällter Baum (schon in den Änderungen eingetragen): Stamm sofort ohne Kollision, die
+    /// Spalte wird ohne ihn neu gebaut.
+    pub fn fell_tree(&mut self, id: TreeId) {
+        self.columns.forget_trunk(id);
+        self.mark_column_changed(IVec2::new(id.chunk_x, id.chunk_z));
+    }
+
+    /// Baumstämme der geladenen Spalten nahe `center` (Kollision, #58).
+    pub fn trunks_near(&self, center: Vec3, radius: f32) -> Vec<Trunk> {
+        self.columns.trunks_near(center, radius)
     }
 
     /// Cave Culling ein- oder ausschalten (z. B. aus im Röntgenmodus).

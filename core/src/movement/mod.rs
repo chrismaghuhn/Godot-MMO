@@ -5,7 +5,8 @@
 //! interpolierten Dichtefelds, also dieselbe Fläche, die Surface Nets zeichnet (bis auf die
 //! Glättung der Meshes).
 //!
-//! - `collide`: Dichte und Gradient an beliebigen Punkten, Herausschieben der Kapsel
+//! - `collide`: Dichte und Gradient an beliebigen Punkten, Herausschieben der Kapsel aus Gelände
+//!   und Baumstämmen (#58)
 //!
 //! Konventionen wie in Godot und Bevy: y oben, Blickrichtung bei `yaw = 0` ist −z, `yaw` dreht
 //! gegen den Uhrzeigersinn (von oben gesehen). Kein Klettern (D-020): Steiler als `max_slope` ist
@@ -20,15 +21,34 @@ use glam::{IVec3, Vec2, Vec3};
 
 use crate::streaming::Streamer;
 
-/// Woher die Dichte kommt (> 0 fest, <= 0 Luft), an ganzzahligen Welt-Voxeln.
+/// Woher die Dichte kommt (> 0 fest, <= 0 Luft), an ganzzahligen Welt-Voxeln, und welche
+/// Baumstämme in der Nähe stehen.
 pub trait DensitySource {
     fn density(&self, voxel: IVec3) -> f32;
+
+    /// Stämme, die eine Kugel um `center` mit `radius` berühren können. Ohne Bäume keine.
+    fn trunks(&self, _center: Vec3, _radius: f32) -> Vec<Trunk> {
+        Vec::new()
+    }
 }
 
 impl<M: Send + 'static> DensitySource for Streamer<M> {
     fn density(&self, voxel: IVec3) -> f32 {
         self.density_at(voxel)
     }
+
+    fn trunks(&self, center: Vec3, radius: f32) -> Vec<Trunk> {
+        self.trunks_near(center, radius)
+    }
+}
+
+/// Baumstamm als Kollisionsform (#58): senkrechte Strecke vom Fuß `base` bis `height` darüber, mit
+/// `radius` (eine Kapsel). Kronen kollidieren nicht, man soll nicht an Blättern hängen bleiben.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Trunk {
+    pub base: Vec3,
+    pub radius: f32,
+    pub height: f32,
 }
 
 /// Maße und Bewegungswerte. Größe und Proportionen kommen später vom Charakter (#24).
@@ -99,6 +119,8 @@ const MAX_FALL_SPEED: f32 = 60.0;
 /// Entlanggleiten).
 const WALL_MEMORY: f32 = 0.15;
 const WALL_PROBE: f32 = 0.6;
+/// Für Stämme (#58): so weit hinter der Körperoberfläche muss der Stamm noch sein.
+const TRUNK_PROBE: f32 = 0.08;
 /// Anteil der gewünschten Geschwindigkeit, der nach dem Abzug der Wände mindestens bleiben muss,
 /// damit der Körper an ihnen entlanggleitet (45° zur Wand: ≈ 70 %).
 const MIN_SLIDE: f32 = 0.3;
@@ -125,13 +147,19 @@ impl Body {
             self.velocity.x += (wish.x - self.velocity.x) * blend;
             self.velocity.z += (wish.z - self.velocity.z) * blend;
         }
+        // Stämme in der Nähe (einmal pro Schritt; die Strecke ist durch MAX_DT und die
+        // Geschwindigkeiten begrenzt).
+        let reach = (self.velocity.length() + speed + settings.jump_speed) * dt + settings.height + 1.0;
+        let trunks = field.trunks(self.position + Vec3::Y * (settings.height * 0.5), reach);
         // Nicht in gerade berührte Wände hineinlaufen, sondern daran entlang (zweimal für Ecken).
         let here = self.position;
         let middle = here + Vec3::Y * (settings.height * 0.5);
         for (normal, at) in self.walls.iter_mut() {
             let offset = Vec3::new(here.x - at.x, 0.0, here.z - at.z);
             let behind = middle - *normal * (settings.radius + WALL_PROBE);
-            let still_there = collide::sample(field, behind).0 > 0.0;
+            // Stämme sind dünner als `WALL_PROBE`: dort knapp hinter der Körperoberfläche prüfen.
+            let touching = middle - *normal * (settings.radius + TRUNK_PROBE);
+            let still_there = collide::sample(field, behind).0 > 0.0 || collide::in_trunk(&trunks, touching);
             if offset.dot(*normal) > WALL_MEMORY || !still_there {
                 *normal = Vec3::ZERO;
             }
@@ -172,13 +200,13 @@ impl Body {
         for _ in 0..substeps {
             let before = self.position;
             self.position += travel / substeps as f32;
-            let mut contact = collide::resolve(&mut self.position, &mut self.velocity, settings, field);
+            let mut contact = collide::resolve(&mut self.position, &mut self.velocity, settings, field, &trunks);
             if contact.stuck {
                 // Passt nicht hinein (z. B. Gang niedriger als der Körper): waagerecht zurück, sonst
                 // steckte der Kopf im Fels (Review-Fund). Steckt er auch dort, weiter herausschieben.
                 let mut back = Vec3::new(before.x, self.position.y, before.z);
                 let mut velocity = Vec3::new(0.0, self.velocity.y, 0.0);
-                let retry = collide::resolve(&mut back, &mut velocity, settings, field);
+                let retry = collide::resolve(&mut back, &mut velocity, settings, field, &trunks);
                 if !retry.stuck {
                     let blocked = Vec3::new(before.x - self.position.x, 0.0, before.z - self.position.z).normalize_or_zero();
                     self.position = back;
@@ -205,11 +233,16 @@ impl Body {
             }
         }
 
-        // Am Boden geblieben? Sonst ein Stück nach unten folgen (Hang hinab, kleine Kanten).
-        if was_on_ground && !jumped && !self.on_ground {
-            let mut probe = self.position - Vec3::Y * settings.snap;
+        // Am Boden geblieben? Sonst ein Stück senkrecht nach unten folgen (Hang hinab, kleine
+        // Kanten). Nur senkrecht: Früher wurde eine tiefere Probe entlang der Hangnormalen
+        // herausgeschoben, also auch hangabwärts, und jeder zweite Schritt war 2-3× so lang
+        // (Review-Fund #58).
+        if was_on_ground && !jumped && !self.on_ground
+            && let Some(drop) = collide::ground_below(self.position, settings, field, &trunks)
+        {
+            let mut probe = self.position - Vec3::Y * drop;
             let mut velocity = self.velocity;
-            let contact = collide::resolve(&mut probe, &mut velocity, settings, field);
+            let contact = collide::resolve(&mut probe, &mut velocity, settings, field, &trunks);
             if contact.ground && !contact.stuck {
                 self.position = probe;
                 self.velocity.y = 0.0;

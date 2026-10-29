@@ -295,3 +295,36 @@ fn digging_keeps_the_old_density_until_the_new_one_arrives() {
     let beside = (pit + Vec3::new(2.5, 0.0, 0.0)).round().as_ivec3();
     assert!(DensitySource::density(&streamer, beside) <= 0.0, "neues Loch nicht im Feld");
 }
+
+/// Jeder gezeigte Baum hat einen Stamm für die Kollision (#58), an derselben Stelle; ein gefällter
+/// verliert ihn sofort und fehlt nach dem Neubau der Spalte.
+#[test]
+fn shown_trees_have_trunks_until_felled() {
+    let world = Arc::new(WorldGen::new(42));
+    let edits = Arc::new(RwLock::new(WorldEdits::default()));
+    let mut streamer = streamer(&world, &edits, 2);
+    let mut scene = Scene::default();
+    let camera = crate::spawn::find_spawn(&world) + Vec3::Y * 2.0;
+    settle(&mut streamer, &mut scene, camera);
+    let tree = scene.trees.iter().find_map(|(&column, trees)| trees.first().map(|&xz| (column, xz))).expect("keine Bäume");
+    let (column, xz) = tree;
+    let center = Vec3::new(xz.x, world.column_height(xz.x, xz.y), xz.y);
+    let near = streamer.trunks_near(center, 0.5);
+    let trunk = *near.iter().find(|t| t.base.xz().distance(xz) < 1e-3).expect("Baum ohne Stamm");
+    assert!(trunk.radius > 0.1 && trunk.height > 1.0, "{trunk:?}");
+    // Alle Bäume einer Spalte haben einen Stamm.
+    let all = streamer.trunks_near(Vec3::new((column.x as f32 + 0.5) * 32.0, 0.0, (column.y as f32 + 0.5) * 32.0), 24.0);
+    for tree in &scene.trees[&column] {
+        assert!(all.iter().any(|t| t.base.xz().distance(*tree) < 1e-3), "Baum bei {tree} ohne Stamm");
+    }
+    // Fällen: Die ID kennt nur die Planung; über die Zelle des Baums finden.
+    let size = CHUNK_SIZE as f32;
+    let local = xz - column.as_vec2() * size;
+    let id = crate::vegetation::TreeId { chunk_x: column.x, chunk_z: column.y, cell: (local.y.floor() as i32 * CHUNK_SIZE + local.x.floor() as i32) as u16 };
+    edits.write().unwrap().fell_tree(id);
+    streamer.fell_tree(id);
+    assert!(!streamer.trunks_near(center, 0.5).iter().any(|t| t.base.xz().distance(xz) < 1e-3), "Stamm nach dem Fällen noch da");
+    settle(&mut streamer, &mut scene, camera);
+    assert!(!scene.trees[&column].iter().any(|t| t.distance(xz) < 1e-3), "gefällter Baum nach dem Neubau noch da");
+    assert!(!streamer.trunks_near(center, 0.5).iter().any(|t| t.base.xz().distance(xz) < 1e-3));
+}

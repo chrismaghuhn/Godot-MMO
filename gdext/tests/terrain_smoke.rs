@@ -78,3 +78,12 @@ fn felling_trees_works_with_and_without_a_server_in_godot() {
         assert!(line.contains(if mode == "off" { "server=aus" } else { "server=verbunden" }), "{line}");
     }
 }
+
+/// Kollision mit Baumstämmen (#58): Der Körper bleibt vor einem Stamm stehen und kommt nach dem
+/// Fällen durch.
+#[test]
+fn trunks_stop_the_player_until_felled_in_godot() {
+    let project = common::TestProject::new();
+    let stdout = common::run_script(&project, "res://tests/trunk_smoke.gd", &[], &[]);
+    assert!(stdout.lines().any(|l| l.starts_with("TERRAFORGE_TRUNK through=")), "{stdout}");
+}

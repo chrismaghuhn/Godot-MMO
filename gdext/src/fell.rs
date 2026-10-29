@@ -61,7 +61,7 @@ impl TerraforgeTerrain {
         let lost = self.edits.local.inventory.add(&item, count);
         self.edits.world.write().expect("Edits-Lock vergiftet").fell_tree(tree.id);
         if let Some(streamer) = self.streamer.as_mut() {
-            streamer.mark_column_changed(IVec2::new(tree.id.chunk_x, tree.id.chunk_z));
+            streamer.fell_tree(tree.id);
         }
         self.edits.stacks = view(&self.edits.local.inventory);
         self.edits.results.push(felled(id, &world.materials, material, count, lost));

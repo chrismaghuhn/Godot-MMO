@@ -3,14 +3,15 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use glam::{IVec2, IVec3, Vec3Swizzles};
+use glam::{IVec2, IVec3, Vec3, Vec3Swizzles};
 
 use super::jobs::{JobKind, Ticket};
 use super::wanted::{camera_chunk, column_distance, column_within, columns_in_view};
 use super::{Built, Context, Event, Frame};
 use crate::mesh::ChunkMesh;
 use crate::occlusion::{FaceLinks, face_links};
-use crate::vegetation::{TreePlacement, column_trees};
+use crate::movement::Trunk;
+use crate::vegetation::{TreeId, TreePlacement, column_trees, trunk};
 use crate::volume::{self, ChunkKind, ColumnData, DensityChunk};
 
 /// Ergebnis eines Spalten-Jobs: alle 3D-Chunks mit Oberfläche in dieser Spalte.
@@ -34,11 +35,13 @@ pub(super) struct Columns<M> {
     loaded: HashSet<IVec2>,
     pending: HashMap<IVec2, Ticket>,
     ready: Vec<ColumnBuild<M>>,
+    /// Stämme der stehenden Bäume je geladener Spalte, für die Kollision (#58).
+    trunks: HashMap<IVec2, Vec<(TreeId, Trunk)>>,
 }
 
 impl<M> Default for Columns<M> {
     fn default() -> Self {
-        Self { loaded: HashSet::new(), pending: HashMap::new(), ready: Vec::new() }
+        Self { loaded: HashSet::new(), pending: HashMap::new(), ready: Vec::new(), trunks: HashMap::new() }
     }
 }
 
@@ -72,6 +75,27 @@ impl<M: Send + 'static> Columns<M> {
         }
     }
 
+    /// Stämme in den geladenen Spalten, die eine Kugel um `center` mit `radius` berühren können.
+    pub(super) fn trunks_near(&self, center: Vec3, radius: f32) -> Vec<Trunk> {
+        let size = volume::CHUNK_SIZE as f32;
+        let (low, high) = ((center.xz() - radius - 1.0) / size, (center.xz() + radius + 1.0) / size);
+        let mut found = Vec::new();
+        for z in low.y.floor() as i32..=high.y.floor() as i32 {
+            for x in low.x.floor() as i32..=high.x.floor() as i32 {
+                let Some(trunks) = self.trunks.get(&IVec2::new(x, z)) else { continue };
+                found.extend(trunks.iter().map(|(_, trunk)| *trunk).filter(|trunk| trunk.base.xz().distance(center.xz()) <= radius + trunk.radius));
+            }
+        }
+        found
+    }
+
+    /// Ein gefällter Baum kollidiert sofort nicht mehr, nicht erst nach dem Neubau der Spalte.
+    pub(super) fn forget_trunk(&mut self, id: TreeId) {
+        if let Some(trunks) = self.trunks.get_mut(&IVec2::new(id.chunk_x, id.chunk_z)) {
+            trunks.retain(|(tree, _)| *tree != id);
+        }
+    }
+
     pub(super) fn update(&mut self, frame: &mut Frame<M>) {
         let center = camera_chunk(frame.camera).xz();
         let radius = frame.ctx.config.view_radius;
@@ -80,12 +104,14 @@ impl<M: Send + 'static> Columns<M> {
         // 1. Spalten außerhalb des Radius entfernen (mit Budget).
         let mut removals = limits.removals;
         let (cache, surface_links, events, field) = (&mut *frame.cache, &mut *frame.surface_links, &mut *frame.events, &mut *frame.field);
+        let trunks = &mut self.trunks;
         self.loaded.retain(|&position| {
             if column_within(position, center, radius + 1) || removals == 0 {
                 return true;
             }
             removals -= 1;
             events.push(Event::RemoveColumn { column: position });
+            trunks.remove(&position);
             field.remove_column(position);
             cache.remove(&position);
             surface_links.retain(|p, _| p.xz() != position);
@@ -166,6 +192,9 @@ impl<M: Send + 'static> Columns<M> {
         for chunk in build.fields {
             frame.field.insert(chunk, build.epoch, camera);
         }
+        let size = volume::CHUNK_SIZE as f32;
+        let origin = Vec3::new(position.x as f32 * size, 0.0, position.y as f32 * size);
+        self.trunks.insert(position, build.trees.iter().map(|tree| (tree.id, trunk(tree, origin))).collect());
         // Ein Neubau ersetzt die alte Spalte erst jetzt, wo die neue da ist (kein Flackern).
         self.loaded.insert(position);
         frame.events.push(Event::ShowColumn { column: position, chunks: build.meshes, trees: build.trees });

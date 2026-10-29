@@ -867,3 +867,26 @@ Inventar-Nachrichten.
   im Bauen (`Failed`) führt das Inventar nicht nach. Gebaute Voxel (`Holdings.placed`) müssen mit
   #19 gespeichert werden, sonst werden sie nach einem Neustart wie natürliche bewertet.
 
+**Umsetzung Kollision mit Bäumen (#58, 2026-10-29):**
+- Jeder Baum hat einen Stamm als senkrechte Kapsel (`movement::Trunk`), Radius und Höhe je Art
+  und Variante aus `vegetation/geometry.rs` (Stamm bis zum Ansatz der Krone), skaliert wie der
+  Baum. Kronen kollidieren nicht. `vegetation::trunk` baut ihn aus derselben `TreePlacement` wie
+  das MultiMesh.
+- Der Streamer hält die Stämme der geladenen Spalten (`trunks_near`); die Bewegung fragt einmal pro
+  Schritt die Stämme in Reichweite ab und schiebt die drei Kugeln der Kapsel aus Gelände und
+  Stämmen. `Streamer::fell_tree` nimmt einen gefällten Stamm sofort heraus (nicht erst mit dem
+  Neubau der Spalte); der Godot-Client nutzt es für Antworten des Servers, die Liste nach dem
+  Verbinden und das Fällen ohne Server.
+- Gefunden im Godot-Test: Das Wand-Gedächtnis aus #13 prüft 0,6 m hinter dem Körper, ob die Wand
+  noch da ist; bei einem dünnen Stamm liegt dieser Punkt schon dahinter, der Körper vergaß den
+  Stamm und kroch darum herum. Für Stämme wird jetzt knapp hinter der Körperoberfläche geprüft;
+  der Core-Test läuft mit dünnen, mittleren und dicken Stämmen leicht neben der Achse.
+- Review-Funde behoben: Kristallbäume hatten einen viel zu dünnen Stamm (der Spieler lief 1-1,5 m
+  in die Spitzen); ein Test vergleicht jetzt jeden Stamm mit dem Querschnitt seines Meshes. Beim
+  Bergablaufen (schon seit #13, durch Stämme öfter) schob das Nachführen am Boden den Körper auch
+  hangabwärts, jeder zweite Schritt war 2-3× so lang; jetzt wird nur senkrecht nachgeführt, mit
+  Test. Beim Herausschieben sieht jede Fläche die Lage nach der vorigen.
+- Bewusst so: Läuft der Spieler fast frontal (weniger als ≈ 17°) auf einen Stamm zu, bleibt er
+  stehen statt seitlich abzurutschen (`MIN_SLIDE` aus #13 gilt auch für Stämme); etwas schräger
+  gleitet er vorbei.
+

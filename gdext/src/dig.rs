@@ -49,16 +49,17 @@ pub(crate) struct Edits {
 
 impl Edits {
     /// Antworten des Server abholen. Gibt die Chunks zurück, die neu zu laden sind, und die
-    /// Spalten, deren Bäume sich geändert haben.
-    pub(crate) fn poll(&mut self, network: Option<&NetworkSource>, materials: &MaterialRegistry) -> (Vec<IVec3>, Vec<IVec2>) {
-        let (mut changed, mut columns) = (Vec::new(), Vec::new());
+    /// gefällten Bäume (der Streamer nimmt ihre Stämme heraus und baut die Spalten neu).
+    pub(crate) fn poll(&mut self, network: Option<&NetworkSource>, materials: &MaterialRegistry) -> (Vec<IVec3>, Vec<TreeId>) {
+        let (mut changed, mut felled_trees) = (Vec::new(), Vec::new());
         let Some(network) = network else {
-            return (changed, columns);
+            return (changed, felled_trees);
         };
         // Schon gefällte Bäume (nach der Anmeldung).
         for (chunk_x, chunk_z, cell) in network.take_felled() {
-            self.world.write().expect("Edits-Lock vergiftet").fell_tree(TreeId { chunk_x, chunk_z, cell });
-            columns.push(IVec2::new(chunk_x, chunk_z));
+            let tree = TreeId { chunk_x, chunk_z, cell };
+            self.world.write().expect("Edits-Lock vergiftet").fell_tree(tree);
+            felled_trees.push(tree);
         }
         // Vorher prüfen: Ein `Edited`, das danach noch eintrifft, kommt beim nächsten Aufruf.
         let failed = network.failed();
@@ -87,7 +88,7 @@ impl Edits {
                 EditOutcome::Felled { tree, material, count, lost, .. } => {
                     let tree = TreeId { chunk_x: tree.0, chunk_z: tree.1, cell: tree.2 };
                     self.world.write().expect("Edits-Lock vergiftet").fell_tree(tree);
-                    columns.push(IVec2::new(tree.chunk_x, tree.chunk_z));
+                    felled_trees.push(tree);
                     self.results.push(felled(id, materials, MaterialId(material), count, lost));
                 }
                 EditOutcome::Failed { chunks } => {
@@ -101,7 +102,7 @@ impl Edits {
                 self.results.push(refused(id, "Server ausgefallen"));
             }
         }
-        (changed, columns)
+        (changed, felled_trees)
     }
 
     /// Vom Server geänderte Chunks markieren (vollständig neu laden).

@@ -160,9 +160,9 @@ impl INode3D for TerraforgeTerrain {
             return;
         };
         if let Some(world) = &self.world {
-            let (chunks, columns) = self.edits.poll(self.network.as_deref(), &world.materials);
+            let (chunks, felled) = self.edits.poll(self.network.as_deref(), &world.materials);
             streamer.mark_changed(chunks);
-            columns.into_iter().for_each(|column| streamer.mark_column_changed(column));
+            felled.into_iter().for_each(|tree| streamer.fell_tree(tree));
         }
         streamer.update(glam::Vec3::new(position.x, position.y, position.z));
         for (kind, duration) in streamer.take_job_times() {
