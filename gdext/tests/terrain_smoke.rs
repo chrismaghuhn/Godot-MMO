@@ -87,3 +87,63 @@ fn trunks_stop_the_player_until_felled_in_godot() {
     let stdout = common::run_script(&project, "res://tests/trunk_smoke.gd", &[], &[]);
     assert!(stdout.lines().any(|l| l.starts_with("TERRAFORGE_TRUNK through=")), "{stdout}");
 }
+
+/// Spielstand (#19): Graben und Bauen, Godot beenden (der Server speichert), neu starten: Grube,
+/// Gebautes und Inventar sind da. Ein kaputter Spielstand sperrt das Graben, statt still ohne ihn
+/// weiterzuspielen, und bleibt unverändert.
+#[test]
+fn digging_survives_a_restart_in_godot() {
+    let server = common::server_binary().display().to_string();
+    let dir = std::env::temp_dir().join(format!("terraforge-persist-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let save = dir.display().to_string();
+    let run = |args: Vec<String>| {
+        let project = common::TestProject::new();
+        let stdout = common::run_script(&project, "res://tests/persist_smoke.gd", &args, &["Spielstand"]);
+        stdout.lines().find(|l| l.starts_with("TERRAFORGE_PERSIST ")).unwrap_or_else(|| panic!("keine Ergebniszeile: {stdout}")).to_string()
+    };
+    let first = run(vec![server.clone(), save.clone(), "first".into()]);
+    let free = first.split_whitespace().find_map(|part| part.strip_prefix("free=")).expect("kein Abstand");
+    let second = run(vec![server.clone(), save.clone(), "second".into(), free.into()]);
+    assert!(second.contains(&format!("free={free}")), "{first} / {second}");
+    // Kaputt machen: Der Server lädt ihn nicht und fasst ihn nicht an.
+    let file = dir.join("world.tfsave");
+    let bytes = std::fs::read(&file).unwrap();
+    std::fs::write(&file, &bytes[..bytes.len() / 2]).unwrap();
+    assert!(run(vec![server.clone(), save.clone(), "broken".into()]).contains("broken"));
+    assert_eq!(std::fs::read(&file).unwrap(), &bytes[..bytes.len() / 2]);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Tests schreiben nie in den `user://`-Ordner des echten Spiels (#19): Nach Graben mit Server liegt
+/// der Spielstand im eigenen Ordner des Testprojekts, der danach gelöscht ist; im Ordner des
+/// Spiels ändert sich keine Datei.
+#[test]
+fn tests_do_not_touch_the_game_save() {
+    let game = common::data_home().join("godot/app_userdata/MMO");
+    let listing = || -> Vec<(std::path::PathBuf, Option<std::time::SystemTime>)> {
+        let mut files = Vec::new();
+        let mut stack = vec![game.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.components().any(|c| c.as_os_str() == "saves") {
+                    files.push((path.clone(), entry.metadata().ok().and_then(|m| m.modified().ok())));
+                }
+            }
+        }
+        files.sort();
+        files
+    };
+    let before = listing();
+    let project = common::TestProject::new();
+    let user = project.1.clone();
+    let server = common::server_binary();
+    common::run_script(&project, "res://tests/dig_smoke.gd", &[server.display().to_string()], &[]);
+    assert!(user.join("saves/seed-42/world.tfsave").exists(), "kein Spielstand im eigenen Ordner: {}", user.display());
+    assert_eq!(listing(), before, "Spielstand des echten Spiels verändert");
+    drop(project);
+    assert!(!user.exists());
+}

@@ -13,3 +13,6 @@ path = "src/main.rs"
 terraforge-core = { path = "../core", features = ["underground"] }
 terraforge-protocol = { path = "../protocol" }
 glam = "0.33"
+# Spielstand (#19).
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1.1", default-features = false, features = ["use-std"] }

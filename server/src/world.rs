@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use glam::{IVec2, IVec3, Vec2, Vec3Swizzles};
@@ -71,6 +72,9 @@ pub struct ServerWorld {
     pub(crate) holdings: Mutex<Holdings>,
     /// Baumfreier Kreis um den Spawn (wie beim Client), einmal berechnet (`fell.rs`).
     pub(crate) clearing: (Vec2, f32),
+    /// Seit dem letzten Speichern geändert; nur eine Speicherung zugleich (`save.rs`).
+    pub(crate) unsaved: AtomicBool,
+    pub(crate) save_lock: Mutex<()>,
 }
 
 impl ServerWorld {
@@ -78,7 +82,7 @@ impl ServerWorld {
         let world = WorldGen::new(seed);
         let underground = Underground::new(secret, &world.cfg);
         let clearing = (find_spawn(&world).xz(), SPAWN_CLEARING);
-        Self { world, underground, columns: Cache::new(COLUMN_CACHE), chunks: Cache::new(CHUNK_CACHE), edits: RwLock::default(), edit_lock: Mutex::default(), holdings: Mutex::default(), clearing }
+        Self { world, underground, columns: Cache::new(COLUMN_CACHE), chunks: Cache::new(CHUNK_CACHE), edits: RwLock::default(), edit_lock: Mutex::default(), holdings: Mutex::default(), clearing, unsaved: AtomicBool::new(false), save_lock: Mutex::default() }
     }
 
     pub fn seed(&self) -> u32 {

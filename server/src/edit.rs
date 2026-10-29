@@ -81,6 +81,9 @@ impl ServerWorld {
     pub fn edit(&self, eye: Vec3, direction: Vec3, request: Request) -> (EditOutcome, Vec<StackInfo>) {
         let _serial = self.edit_lock.lock().unwrap_or_else(PoisonError::into_inner);
         let outcome = self.apply_edit(eye, direction, request);
+        if !matches!(outcome, EditOutcome::Refused { .. }) {
+            self.unsaved.store(true, std::sync::atomic::Ordering::Release);
+        }
         (outcome, self.inventory_view())
     }
 

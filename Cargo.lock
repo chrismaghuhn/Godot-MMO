@@ -4370,6 +4370,8 @@ name = "terraforge-server"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "postcard",
+ "serde",
  "terraforge-core",
  "terraforge-protocol",
 ]

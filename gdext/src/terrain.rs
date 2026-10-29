@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 
 use glam::{IVec2, IVec3, Vec3Swizzles};
 use godot::classes::base_material_3d::{Flags, ShadingMode};
-use godot::classes::{INode3D, MeshInstance3D, Node3D, ProjectSettings, StandardMaterial3D};
+use godot::classes::{INode3D, MeshInstance3D, Node3D, StandardMaterial3D};
 use godot::prelude::*;
 use terraforge_core::WorldGen;
 use terraforge_core::spawn::find_spawn;
@@ -65,12 +65,16 @@ pub(crate) struct TerraforgeTerrain {
     /// Server) oder `off` (nur öffentliche Oberfläche).
     #[export]
     #[init(val = GString::from("auto"))]
-    server: GString,
+    pub(crate) server: GString,
     /// Server-Programm für `auto` (Pfad, `res://` erlaubt). Leer: der neuere Build aus
     /// `target/release` bzw. `target/debug` (`cargo build -p terraforge-server --release`; der
     /// Debug-Build rechnet zu langsam für schnelles Fliegen).
     #[export]
-    server_binary: GString,
+    pub(crate) server_binary: GString,
+    /// Ordner für den Spielstand des Servers (#19, `res://`/`user://` erlaubt). Leer:
+    /// `user://saves/seed-<seed>`. Nur mit `server = "auto"`; ein laufender Server hat seinen eigenen.
+    #[export]
+    pub(crate) save_dir: GString,
 
     pub(crate) world: Option<Arc<WorldGen>>,
     pub(crate) streamer: Option<Streamer<MeshData>>,
@@ -78,9 +82,9 @@ pub(crate) struct TerraforgeTerrain {
     pub(crate) network: Option<Arc<NetworkSource>>,
     pub(crate) edits: Edits,
     /// Der selbst gestartete Server; endet mit dem Terrain.
-    server_process: Option<ServerProcess>,
+    pub(crate) server_process: Option<ServerProcess>,
     /// Zustand für Overlay und Tests: "aus", "verbunden", "nicht erreichbar", "ausgefallen".
-    server_state: &'static str,
+    pub(crate) server_state: &'static str,
     material: Option<Gd<StandardMaterial3D>>,
     trees: Option<TreeAssets>,
     columns: HashMap<IVec2, Column>,
@@ -189,68 +193,6 @@ impl TerraforgeTerrain {
     /// Der Streamer (nach `_ready`), z. B. als Dichtefeld für `TerraforgeBody`.
     pub(crate) fn streamer(&self) -> Option<&Streamer<MeshData>> {
         self.streamer.as_ref()
-    }
-
-    /// Pfad des Server-Programms: `server_binary` oder der zuletzt gebaute aus `target/`.
-    fn server_binary_path(&self) -> String {
-        let globalize = |path: &str| ProjectSettings::singleton().globalize_path(path).to_string();
-        if !self.server_binary.is_empty() {
-            return globalize(&self.server_binary.to_string());
-        }
-        let built = |profile: &str| {
-            let path = globalize(&format!("res://../target/{profile}/terraforge-server"));
-            let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
-            modified.map(|modified| (modified, path))
-        };
-        match (built("release"), built("debug")) {
-            (Some(release), Some(debug)) => release.max(debug).1,
-            (Some((_, path)), None) | (None, Some((_, path))) => path,
-            (None, None) => globalize("res://../target/release/terraforge-server"),
-        }
-    }
-
-    /// Verbindung zum Server nach `server`; `None` heißt: nur öffentliche Oberfläche.
-    fn connect_server(&mut self, seed: u32) -> Option<Arc<NetworkSource>> {
-        let mode = self.server.to_string();
-        self.server_state = "aus";
-        let address = match mode.as_str() {
-            "" | "off" => return None,
-            "auto" => {
-                let binary = self.server_binary_path();
-                if !std::path::Path::new(&binary).exists() {
-                    godot_warn!("Server nicht gefunden ({binary}), ohne Höhlen. Bauen: cargo build -p terraforge-server");
-                    self.server_state = "nicht erreichbar";
-                    return None;
-                }
-                match ServerProcess::start(&binary, seed) {
-                    Ok(process) => {
-                        let address = format!("127.0.0.1:{}", process.port);
-                        self.server_process = Some(process);
-                        address
-                    }
-                    Err(error) => {
-                        godot_warn!("Server startet nicht ({error}), ohne Höhlen");
-                        self.server_state = "nicht erreichbar";
-                        return None;
-                    }
-                }
-            }
-            address => address.to_string(),
-        };
-        match NetworkSource::connect(address.as_str(), seed, Duration::from_secs(5)) {
-            Ok(network) => {
-                let network = Arc::new(network);
-                self.network = Some(Arc::clone(&network));
-                self.server_state = "verbunden";
-                Some(network)
-            }
-            Err(error) => {
-                godot_warn!("Keine Verbindung zum Server {address} ({error}), ohne Höhlen");
-                self.server_state = "nicht erreichbar";
-                self.server_process = None;
-                None
-            }
-        }
     }
 
     fn mesh_instance(&self, data: MeshData, position: Vector3) -> Gd<MeshInstance3D> {
@@ -375,6 +317,9 @@ impl TerraforgeTerrain {
         set("idle", idle.to_variant());
         set("server", self.server_state.to_variant());
         set("field_chunks", (s.field_chunks as i64).to_variant());
+        // Als verändert bekannte Chunks (vom Server nach dem Anmelden, #19, und durch eigene Aktionen).
+        let touched = self.edits.world.read().map_or(0, |edits| edits.touched_chunks().count());
+        set("touched_chunks", (touched as i64).to_variant());
         set("upload_ms", (self.upload.as_secs_f32() * 1000.0).to_variant());
         set("column_job_ms", average(&self.recent[0]).to_variant());
         set("cave_job_ms", average(&self.recent[1]).to_variant());

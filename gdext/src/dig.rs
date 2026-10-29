@@ -45,6 +45,8 @@ pub(crate) struct Edits {
     pub(crate) stacks: Vec<StackInfo>,
     /// Inventar ohne Server.
     pub(crate) local: Holdings,
+    /// Gesperrt (z. B. Spielstand defekt): Grund für jede Aktion.
+    pub(crate) blocked: Option<String>,
 }
 
 impl Edits {
@@ -55,6 +57,8 @@ impl Edits {
         let Some(network) = network else {
             return (changed, felled_trees);
         };
+        // Veränderte Chunks nach der Anmeldung (Spielstand, #19): vollständig neu anfragen.
+        changed.extend(self.touch(network.take_touched()));
         // Schon gefällte Bäume (nach der Anmeldung).
         for (chunk_x, chunk_z, cell) in network.take_felled() {
             let tree = TreeId { chunk_x, chunk_z, cell };
@@ -213,6 +217,10 @@ impl TerraforgeTerrain {
             return -1;
         };
         let id = self.edits.next_id();
+        if let Some(reason) = self.edits.blocked.clone() {
+            self.edits.results.push(refused(id, &reason));
+            return id;
+        }
         let Some(direction) = direction.try_normalize().filter(|_| eye.is_finite()) else {
             self.edits.results.push(refused(id, "ungültige Position oder Richtung"));
             return id;

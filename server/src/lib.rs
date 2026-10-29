@@ -5,6 +5,7 @@
 //! - `edit`:       Graben und Bauen prüfen und ausführen (#14)
 //! - `inventory`:  Inventar des Spielers, Ausbeute und Verbrauch (#18)
 //! - `fell`:       Bäume fällen (#18)
+//! - `save`:       Spielstand schreiben und laden (#19)
 //! - `workers`:    Threads, die die Chunks berechnen
 //!
 //! Vorerst ein lokaler Prozess für den Singleplayer (Godot startet ihn, D-021). Server-autoritative
@@ -13,6 +14,7 @@
 mod connection;
 mod edit;
 mod fell;
+mod save;
 mod inventory;
 mod workers;
 mod world;
@@ -21,6 +23,7 @@ use std::net::TcpListener;
 use std::sync::Arc;
 
 pub use edit::Request;
+pub use save::save_path;
 pub use world::ServerWorld;
 
 /// Nimmt Verbindungen an, bis der Listener schließt. Mit `exit_with_client` endet der Server, wenn

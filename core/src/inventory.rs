@@ -145,6 +145,14 @@ impl Inventory {
         Some((item, taken))
     }
 
+    /// Legt einen gespeicherten Stapel auf seinen Platz (#19); außerhalb der Plätze wird er
+    /// verworfen.
+    pub fn restore(&mut self, slot: usize, stack: Stack) {
+        if let Some(entry) = self.slots.get_mut(slot) {
+            *entry = Some(stack);
+        }
+    }
+
     /// Anzahl aller Stück eines Materials.
     pub fn count(&self, material: MaterialId) -> u32 {
         self.stacks().filter(|(_, stack)| stack.item.material == material).map(|(_, stack)| stack.count).sum()
@@ -193,6 +201,15 @@ impl Holdings {
             lost += self.inventory.add(&item, 1);
         }
         lost
+    }
+
+    /// Gebaute Voxel mit ihrem Item (zum Speichern, #19).
+    pub fn placed(&self) -> impl Iterator<Item = (IVec3, &Item)> + '_ {
+        self.placed.iter().map(|(voxel, item)| (*voxel, item))
+    }
+
+    pub fn restore_placed(&mut self, voxel: IVec3, item: Item) {
+        self.placed.insert(voxel, item);
     }
 
     /// Nimmt die verbauten Voxel vom Platz `slot` und merkt sich ihr Item.

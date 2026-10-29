@@ -890,3 +890,40 @@ Inventar-Nachrichten.
   stehen statt seitlich abzurutschen (`MIN_SLIDE` aus #13 gilt auch für Stämme); etwas schräger
   gleitet er vorbei.
 
+**Umsetzung Spielstand (#19, 2026-10-29):**
+- Der Server speichert (`server/src/save.rs`); die Datei enthält Geheimes (gegrabene Erze,
+  Reinheit) und gehört nie zum Client (D-005). Eine Datei `world.tfsave` je Welt-Ordner: `postcard`
+  mit Versionsnummer, öffentlichem Seed und einer Kennung des geheimen Seeds (Hash, verrät ihn
+  nicht). Inhalt: Voxel-Änderungen je Chunk (damit sie sich später als Zeilen in die Datenbank aus
+  #27 übernehmen lassen), gefällte Bäume, Inventar und gebaute Voxel mit ihrem Item.
+- Geschrieben wird in eine Hilfsdatei, die danach umbenannt wird (ein Absturz beim Schreiben lässt
+  den alten Stand stehen), ganz unter `edit_lock`. Ein Spielstand einer anderen Welt, einer anderen
+  Version oder eine kaputte Datei wird nicht geladen; der Server startet dann nicht, statt ihn zu
+  überschreiben.
+- `terraforge-server --save ORDNER`: lädt beim Start, speichert alle 30 s, wenn sich etwas geändert
+  hat, und beim Ende (Verbindung oder stdin zu). Godot gibt `user://saves/seed-<seed>` mit (Export
+  `save_dir`) und beendet den Server geordnet: stdin schließen, bis zu 5 s warten, erst dann `kill`.
+  Ohne Server wird nichts gespeichert. Den Ordner benennt nur der öffentliche Seed: Ändert sich der
+  geheime (`TERRAFORGE_SECRET_SEED`), passt der Spielstand nicht mehr und wird nicht geladen.
+- Nach der Anmeldung schickt der Server die veränderten Chunks (`TouchedChunks`): Sonst fragte ein
+  Client nach einem Neustart Gebautes über der Oberfläche oder Schächte unter der Höhlengrenze gar
+  nicht an.
+- Gefunden beim Schreiben der Tests: Das Godot-Testprojekt heißt wie das Spiel und teilte sich
+  dessen `user://`-Ordner, also auch den Spielstand. Jedes Testprojekt hat jetzt einen eigenen
+  Ordner, der danach gelöscht wird; ein Test prüft das.
+- Review-Funde behoben: Beim Beenden ging der letzte Stand verloren (Verbindung und stdin enden
+  fast gleichzeitig; ein Thread sah „nichts zu tun“ und beendete den Prozess, während der andere
+  schrieb; bei 2 MB Spielstand 15 von 15 Mal). Jetzt wartet jeder Aufrufer, bis die laufende
+  Speicherung fertig ist; ein Test startet den echten Server mit großem Spielstand und schließt
+  Verbindung und stdin wie Godot. Die Datei wird mit `sync_all` geschrieben (auch nach einem Absturz
+  des Rechners ganz); geschrieben wird ohne `edit_lock` (nur der Stand wird darunter erfasst). Ein
+  defekter oder fremder Spielstand führte still ins Spiel ohne Speichern; jetzt meldet der Server
+  den Grund, Godot zeigt „Spielstand defekt“ und sperrt Graben und Bauen. Zwei Server auf demselben
+  Ordner sperrt eine Lock-Datei aus. Godot startet den Server in eigener Prozessgruppe (Ctrl+C trifft
+  nur Godot, der Server speichert). Der Spielstand führt die Materialnummern mit (umnummerierte
+  Materialien laden nicht still falsch, neue dürfen dazukommen). Protokoll 4.
+- Offen: Aktionen, die beim Ende noch in der Warteschlange liegen (vom Client nie bestätigt), fehlen
+  im letzten Stand. Die ganze Datei wird alle 30 s neu geschrieben (≈ 9 Byte je geändertem Voxel;
+  bis zur Datenbank in #27 vertretbar). Mit mehreren Spielern (#26) darf `TouchedChunks` nur die
+  Umgebung des Spielers nennen, sonst verriete es weltweit, wo andere gegraben haben.
+

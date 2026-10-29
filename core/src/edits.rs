@@ -142,6 +142,16 @@ impl WorldEdits {
         heights
     }
 
+    /// Alle geänderten Voxel nach Besitzer-Chunk (zum Speichern, #19).
+    pub fn chunks(&self) -> impl Iterator<Item = (IVec3, &HashMap<IVec3, Voxel>)> + '_ {
+        self.by_owner.iter().map(|(chunk, voxels)| (*chunk, voxels))
+    }
+
+    /// Stellt eine gespeicherte Änderung wieder her (#19).
+    pub fn restore(&mut self, voxel: IVec3, value: Voxel) {
+        self.set(voxel, value);
+    }
+
     fn set(&mut self, voxel: IVec3, value: Voxel) {
         self.by_owner.entry(owner_chunk(voxel)).or_default().insert(voxel, value);
         self.touched.extend(chunks_containing(voxel));

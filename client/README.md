@@ -50,8 +50,12 @@ Höhlen und Erze kommen vom **lokalen Server** (`server/`, #56): Das Terrain sta
 als Kindprozess (der neuere Build aus `target/release` bzw. `target/debug`; der Debug-Build ist zum
 schnellen Fliegen zu langsam) und beendet ihn mit dem Spiel. Ohne Server läuft alles, nur ohne
 Höhlen (Warnung im Log). `TERRAFORGE_SERVER=off` schaltet ihn ab, `TERRAFORGE_SERVER=host:port`
-verbindet mit einem laufenden Server (`terraforge-server --port 7777`). Den geheimen Seed liest der
-Server aus `TERRAFORGE_SECRET_SEED`, sonst nimmt er den unsicheren Entwickler-Seed.
+verbindet mit einem laufenden Server (`terraforge-server --port 7777`). Den Spielstand (#19:
+Gegrabenes, Gebautes, gefällte Bäume, Inventar) speichert der Server in `user://saves/seed-<seed>`
+(unter Linux `~/.local/share/godot/app_userdata/MMO/saves/`), alle 30 s und beim Beenden; ein
+anderer Ordner geht über den Export `save_dir` des Terrains. Ohne Server wird nichts gespeichert.
+Den geheimen Seed liest der Server aus `TERRAFORGE_SECRET_SEED`, sonst nimmt er den unsicheren
+Entwickler-Seed.
 
 Die Startszene ([`scenes/main.tscn`](scenes/main.tscn), aufgebaut in
 [`scripts/main.gd`](scripts/main.gd)) streamt das Terrain um die Kamera (`TerraforgeTerrain`,
@@ -95,7 +99,9 @@ mit `terraforge-core`) und [`tests/terrain_smoke.gd`](tests/terrain_smoke.gd) (S
 Meshes, Entfernen beim Weiterfliegen, Höhlen vom Server), [`tests/player_smoke.gd`](tests/player_smoke.gd)
 (Laufen und Springen) und [`tests/dig_smoke.gd`](tests/dig_smoke.gd) (Graben und Bauen mit und ohne
 Server, neuer Stand auch in der Kollision, Inventar), [`tests/fell_smoke.gd`](tests/fell_smoke.gd)
-(Bäume fällen) und [`tests/trunk_smoke.gd`](tests/trunk_smoke.gd) (Stämme halten auf, gefällte nicht). Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
+(Bäume fällen), [`tests/trunk_smoke.gd`](tests/trunk_smoke.gd) (Stämme halten auf, gefällte nicht) und
+[`tests/persist_smoke.gd`](tests/persist_smoke.gd) (Spielstand über einen Neustart). Jedes
+Testprojekt hat einen eigenen `user://`-Ordner, der Spielstand des echten Spiels bleibt unberührt. Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
 gebaute Bibliothek lädt; die des Editors bleibt unberührt. Ohne Godot (`GODOT` oder `godot` im
 `PATH`) schlägt er fehl. Außerdem prüft `gdext/tests/lockfiles.rs`, dass `gdext/Cargo.lock` für
 alle Abhängigkeiten des Cores dieselben Versionen hat wie das Haupt-`Cargo.lock` (sonst erzeugten

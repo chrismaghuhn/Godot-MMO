@@ -11,14 +11,16 @@
 //!
 //! Inventar (#18, D-022): Der Server führt es und schickt nach dem `Welcome` und nach jeder
 //! Änderung den ganzen Stand (`Inventory`, wenige KB). Nach dem `Welcome` kommen außerdem die
-//! schon gefällten Bäume (`FelledTrees`), damit ein neu verbundener Client sie nicht mehr zeigt.
+//! schon gefällten Bäume (`FelledTrees`), damit ein neu verbundener Client sie nicht mehr zeigt,
+//! und die veränderten Chunks (`TouchedChunks`, #19), die er vollständig anfragen muss (z. B.
+//! Gebautes über der Oberfläche, das der Client sonst gar nicht lädt).
 
 use serde::{Deserialize, Serialize};
 
 use crate::chunk::Run;
 
 /// Version des Protokolls; Client und Server müssen gleich sein.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// Welche Daten der Client für einen Chunk braucht (wie `UndergroundSource`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +61,8 @@ pub enum ServerMessage {
     Inventory { stacks: Vec<StackInfo> },
     /// Gefällte Bäume (`vegetation::TreeId`: Spalte x/z, Zelle).
     FelledTrees { trees: Vec<(i32, i32, u16)> },
+    /// Chunks mit Spieler-Änderungen (nach dem Laden eines Spielstands oder Neuverbinden).
+    TouchedChunks { chunks: Vec<[i32; 3]> },
 }
 
 /// Ein Inventarplatz, wie der Client ihn anzeigt.

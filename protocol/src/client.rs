@@ -35,6 +35,7 @@ type Pending = Arc<Mutex<HashMap<u64, Sender<ChunkReply>>>>;
 type Edited = Arc<Mutex<Vec<(u64, EditOutcome)>>>;
 type Inventory = Arc<Mutex<Option<Vec<StackInfo>>>>;
 type Felled = Arc<Mutex<Vec<(i32, i32, u16)>>>;
+type Touched = Arc<Mutex<Vec<[i32; 3]>>>;
 
 pub struct NetworkSource {
     lowest_cave_chunk: i32,
@@ -43,6 +44,7 @@ pub struct NetworkSource {
     edited: Edited,
     inventory: Inventory,
     felled: Felled,
+    touched: Touched,
     next_request: AtomicU64,
     failed: Arc<AtomicBool>,
     reader: Option<JoinHandle<()>>,
@@ -69,10 +71,12 @@ impl NetworkSource {
         let edited: Edited = Arc::default();
         let inventory: Inventory = Arc::default();
         let felled: Felled = Arc::default();
+        let touched: Touched = Arc::default();
         let failed = Arc::new(AtomicBool::new(false));
         let mut reader_stream = stream.try_clone()?;
         let reader = {
-            let (pending, edited, inventory, felled, failed) = (Arc::clone(&pending), Arc::clone(&edited), Arc::clone(&inventory), Arc::clone(&felled), Arc::clone(&failed));
+            let (pending, edited, inventory, failed) = (Arc::clone(&pending), Arc::clone(&edited), Arc::clone(&inventory), Arc::clone(&failed));
+            let (felled, touched) = (Arc::clone(&felled), Arc::clone(&touched));
             std::thread::Builder::new().name("terraforge-net".into()).spawn(move || {
                 loop {
                     match read_message::<ServerMessage>(&mut reader_stream) {
@@ -90,6 +94,9 @@ impl NetworkSource {
                         Ok(Some(ServerMessage::FelledTrees { trees })) => {
                             felled.lock().unwrap_or_else(PoisonError::into_inner).extend(trees);
                         }
+                        Ok(Some(ServerMessage::TouchedChunks { chunks })) => {
+                            touched.lock().unwrap_or_else(PoisonError::into_inner).extend(chunks);
+                        }
                         Ok(Some(other)) => eprintln!("terraforge: unerwartete Nachricht vom Server: {other:?}"),
                         Ok(None) | Err(_) => break,
                     }
@@ -100,7 +107,7 @@ impl NetworkSource {
                 pending.lock().unwrap_or_else(PoisonError::into_inner).clear();
             })?
         };
-        Ok(Self { lowest_cave_chunk, writer: Mutex::new(stream), pending, edited, inventory, felled, next_request: AtomicU64::new(0), failed, reader: Some(reader) })
+        Ok(Self { lowest_cave_chunk, writer: Mutex::new(stream), pending, edited, inventory, felled, touched, next_request: AtomicU64::new(0), failed, reader: Some(reader) })
     }
 
     /// Ob die Verbindung ausgefallen ist (ab dann nur noch öffentliche Oberfläche).
@@ -138,6 +145,11 @@ impl NetworkSource {
     /// Gefällte Bäume, die der Server seit dem letzten Aufruf gemeldet hat (nach der Anmeldung).
     pub fn take_felled(&self) -> Vec<(i32, i32, u16)> {
         std::mem::take(&mut *self.felled.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// Veränderte Chunks, die der Server seit dem letzten Aufruf gemeldet hat (nach der Anmeldung).
+    pub fn take_touched(&self) -> Vec<[i32; 3]> {
+        std::mem::take(&mut *self.touched.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
     /// Fragt einen Chunk an und wartet auf die Antwort; `None`, wenn keine kommt.

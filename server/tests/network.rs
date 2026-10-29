@@ -149,11 +149,13 @@ fn requests_outside_the_world_do_not_break_the_server() {
     stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
     write_message(&mut stream, &ClientMessage::Hello { version: VERSION, seed: SEED }).unwrap();
     let _: Option<ServerMessage> = read_message(&mut stream).unwrap();
-    // Nach dem `Welcome` schickt der Server den Inventar-Stand und die gefällten Bäume (#18).
+    // Nach dem `Welcome` schickt der Server den Inventar-Stand, die gefällten Bäume (#18) und die veränderten Chunks (#19).
     let inventory: Option<ServerMessage> = read_message(&mut stream).unwrap();
     assert!(matches!(inventory, Some(ServerMessage::Inventory { .. })), "{inventory:?}");
     let felled: Option<ServerMessage> = read_message(&mut stream).unwrap();
     assert!(matches!(felled, Some(ServerMessage::FelledTrees { .. })), "{felled:?}");
+    let touched: Option<ServerMessage> = read_message(&mut stream).unwrap();
+    assert!(matches!(touched, Some(ServerMessage::TouchedChunks { .. })), "{touched:?}");
     let far = [[i32::MAX, 0, 0], [0, i32::MIN, 0], [100_000_000, -2, 0], [0, 0, i32::MIN]];
     for (request, position) in far.iter().enumerate() {
         write_message(&mut stream, &ClientMessage::Chunk { request: request as u64, position: *position, kind: ChunkKind::Full }).unwrap();

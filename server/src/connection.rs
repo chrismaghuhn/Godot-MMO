@@ -28,6 +28,7 @@ fn serve_client(mut stream: TcpStream, world: &Arc<ServerWorld>, workers: &Worke
             write_message(&mut stream, &welcome)?;
             write_message(&mut stream, &ServerMessage::Inventory { stacks: world.inventory_view() })?;
             write_message(&mut stream, &ServerMessage::FelledTrees { trees: world.felled_trees() })?;
+            write_message(&mut stream, &ServerMessage::TouchedChunks { chunks: world.touched_chunks() })?;
         }
         Some(ClientMessage::Hello { version, seed }) => {
             let reason = format!("Client: Protokoll {version}, Seed {seed}; Server: Protokoll {VERSION}, Seed {}", world.seed());

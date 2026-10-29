@@ -33,8 +33,18 @@ fn built_library() -> PathBuf {
     library
 }
 
-/// Temporäres Godot-Projekt, das `library` lädt. Wird beim Verwerfen gelöscht.
-pub struct TestProject(pub PathBuf);
+/// Wo Godot unter Linux `user://`-Ordner anlegt: `XDG_DATA_HOME`, wenn gesetzt und absolut, sonst
+/// `~/.local/share`.
+pub fn data_home() -> PathBuf {
+    match std::env::var_os("XDG_DATA_HOME").map(PathBuf::from) {
+        Some(dir) if dir.is_absolute() => dir,
+        _ => PathBuf::from(std::env::var_os("HOME").expect("HOME")).join(".local/share"),
+    }
+}
+
+/// Temporäres Godot-Projekt, das `library` lädt. Wird beim Verwerfen gelöscht, samt eigenem
+/// `user://`-Ordner: Sonst teilten sich Tests mit dem echten Spiel („MMO“) den Spielstand (#19).
+pub struct TestProject(pub PathBuf, pub PathBuf);
 
 impl TestProject {
     pub fn new() -> Self {
@@ -43,9 +53,17 @@ impl TestProject {
         let number = PROJECTS.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("terraforge-gdext-test-{}-{number}", std::process::id()));
         std::fs::create_dir_all(dir.join(".godot")).unwrap();
-        for file in ["project.godot", "icon.svg"] {
-            std::fs::copy(client.join(file), dir.join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
-        }
+        std::fs::copy(client.join("icon.svg"), dir.join("icon.svg")).unwrap();
+        let user_dir = format!("terraforge-gdext-test-{}-{number}", std::process::id());
+        let project = std::fs::read_to_string(client.join("project.godot")).unwrap();
+        assert!(project.contains("[application]\n"), "project.godot ohne [application]-Abschnitt");
+        let project = project.replacen(
+            "[application]\n",
+            &format!("[application]\n\nconfig/use_custom_user_dir=true\nconfig/custom_user_dir_name=\"{user_dir}\"\n"),
+            1,
+        );
+        std::fs::write(dir.join("project.godot"), project).unwrap();
+        let user = data_home().join(user_dir);
         for folder in ["scenes", "scripts", "shaders", "tests"] {
             copy_dir(&client.join(folder), &dir.join(folder));
         }
@@ -60,13 +78,14 @@ impl TestProject {
             .join("\n");
         std::fs::write(dir.join("terraforge.gdextension"), config).unwrap();
         std::fs::write(dir.join(".godot/extension_list.cfg"), "res://terraforge.gdextension\n").unwrap();
-        Self(dir)
+        Self(dir, user)
     }
 }
 
 impl Drop for TestProject {
     fn drop(&mut self) {
         std::fs::remove_dir_all(&self.0).ok();
+        std::fs::remove_dir_all(&self.1).ok();
     }
 }
 

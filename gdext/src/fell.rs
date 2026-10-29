@@ -25,6 +25,10 @@ impl TerraforgeTerrain {
             return -1;
         };
         let id = self.edits.next_id();
+        if let Some(reason) = self.edits.blocked.clone() {
+            self.edits.results.push(refused(id, &reason));
+            return id;
+        }
         let local = self.base().to_local(eye);
         let (eye, direction) = (Vec3::new(local.x, local.y, local.z), Vec3::new(direction.x, direction.y, direction.z));
         let Some(direction) = direction.try_normalize().filter(|_| eye.is_finite()) else {
