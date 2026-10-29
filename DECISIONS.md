@@ -927,3 +927,34 @@ Inventar-Nachrichten.
   bis zur Datenbank in #27 vertretbar). Mit mehreren Spielern (#26) darf `TouchedChunks` nur die
   Umgebung des Spielers nennen, sonst verriete es weltweit, wo andere gegraben haben.
 
+## D-023: Kampf-Prototyp vorziehen, mit Platzhaltern
+- Datum: 2026-10-29
+- Status: angenommen
+
+**Kontext:** Der Spielkreislauf aus D-022 (#15, #18, #19) steht. Kampf bringt viel Spielgefühl,
+hängt laut Plan aber an Schmieden (Phase 4, Waffen) und Charakteren (Phase 5, Körper und
+Animation). Design: [docs/design/kampf.md](docs/design/kampf.md), D-020.
+
+**Entscheidung:**
+- Ein Kampf-Prototyp kommt jetzt, vor den Biomen (#16, #17): zuerst eine Trainingspuppe (#62),
+  danach ein erster Gegner mit KI (#63).
+- **Waffen:** feste Platzhalter Schwert, Axt, Speer, mit Länge, Masse und Schwerpunkt im selben
+  Datenformat, das später das Schmieden füllt (D-019). Ausholzeit und Wucht folgen schon aus der
+  Physik (Trägheit um den Griff), nicht aus festen Tabellen.
+- **Ort:** Regeln und Schwung-Bahn im Core; Puppe, später Gegner und die Trefferprüfung auf dem
+  lokalen Server (D-003), wie beim Graben. Client und Server rechnen dieselbe Bahn, die Anzeige
+  folgt ihr.
+- **Eingabe:** Kampfmodus mit R (Waffe ziehen/wegstecken). Darin ist die Maus gefangen und dreht
+  die Kamera; linke Taste halten und die Maus bewegen wählt die Richtung (oben, links, rechts,
+  Stich), loslassen schlägt; rechte Taste blockt. Außerhalb des Kampfmodus bleibt alles wie bisher
+  (Linksklick gräbt).
+- **Optik:** ohne Charaktermodell (#24): Waffe in First-Person als einfaches prozedurales Mesh,
+  Puppe aus Primitiven.
+
+**Alternativen:** Erst Schmieden und Charaktere bauen (richtig, aber lange ohne Kampf); Kampf nur im
+Client rechnen (schneller, müsste für Phase 6 umziehen); feste Tasten je Richtung (leichter zu
+lernen, weniger Gefühl); gleich mehrere Gegner (mehr Spaß, viel größer).
+
+**Folgen:** Platzhalter-Waffen und Puppen-Optik werden ersetzt, wenn Schmieden und Charaktere
+kommen; die Regeln und das Datenformat sollen bleiben. Die Biome rücken nach hinten.
+

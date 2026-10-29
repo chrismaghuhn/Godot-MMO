@@ -6,6 +6,12 @@ Kampf ist **aktiv und körperbetont**, in First-Person, in Richtung Mount & Blad
 Waffen kommen aus der Schmiede-Simulation ([schmieden.md](schmieden.md)), Körper und Bewegung
 aus [charakter.md](charakter.md).
 
+## Prototyp (D-023)
+
+Vorgezogen vor Schmieden und Charakteren: Platzhalter-Waffen (Schwert, Axt, Speer), Kampfmodus mit
+R, Richtung per Mausbewegung beim Ausholen, rechte Taste blockt. Zuerst eine Trainingspuppe (#62),
+dann ein Gegner mit KI (#63). Regeln im Core, Treffer prüft der Server.
+
 ## Grundregeln
 
 - **Richtungsbasierte Schläge:** Die Mausbewegung bestimmt die Richtung (oben, seitlich, Stich).
