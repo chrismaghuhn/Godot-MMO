@@ -2,6 +2,7 @@
 //!
 //! Eine Datei pro Godot-Klasse:
 //! - `body`:    `TerraforgeBody`, Bewegung und Kollision aus dem Core (#13)
+//! - `combat`:  `TerraforgeCombat` und Schläge am `TerraforgeTerrain` (#62)
 //! - `dig`:     Graben und Bauen am `TerraforgeTerrain`, geprüft vom Server (#14)
 //! - `inventory`: Inventar-Anzeige am `TerraforgeTerrain` (#18)
 //! - `fell`:    Bäume fällen am `TerraforgeTerrain` (#18)
@@ -15,6 +16,7 @@
 //! Build-Anleitung: `client/README.md`.
 
 mod body;
+mod combat;
 mod dig;
 mod fell;
 mod inventory;

@@ -958,3 +958,35 @@ lernen, weniger Gefühl); gleich mehrere Gegner (mehr Spaß, viel größer).
 **Folgen:** Platzhalter-Waffen und Puppen-Optik werden ersetzt, wenn Schmieden und Charaktere
 kommen; die Regeln und das Datenformat sollen bleiben. Die Biome rücken nach hinten.
 
+**Umsetzung Trainingspuppe (#62, 2026-10-29):**
+- `core/src/combat/`: Waffen mit Reichweite, Masse und Schwerpunkt; Trägheit um die Hand
+  (`m · (Schwerpunkt² + Länge²/12)`) bestimmt Ausholen, Schlag, Erholung und Ausdauer. Schwert holt in
+  0,45 s aus, Axt in 0,57 s, Speer in 0,71 s. Vier Richtungen als Bahn der Klinge im Blick-Rahmen
+  (von oben und Stich auf die Körpermitte, seitlich aus der Schulter); `strike` tastet die Bahn in 48
+  Schritten ab, der erste Kontakt mit einer Trefferzone (Kapseln für Kopf, Rumpf, Arme, Beine) zählt.
+  Die Zahl der Schritte richtet sich nach der Bahnlänge (die Spitze kommt je Schritt höchstens 4 cm
+  weit). Schaden = Impuls am Kontaktpunkt (wirksame Masse von Waffe und Arm bzw. Körper beim Stich ×
+  Geschwindigkeit) × Art (Schnitt, Stich, Wucht) × Zone (Kopf 2, Rumpf 1, Beine 0,6, Arme 0,5).
+  Gemessen: Schwert von oben am Kopf ≈ 35 bei 23 m/s, Axt ≈ 55, Speerstich am Rumpf ≈ 16.
+- Ausdauer 100, Erholung 8 je Sekunde: Im Dauerschlagen ist man mit dem Speer nach ≈ 6 Schlägen
+  (7 s) erschöpft, mit der Axt nach ≈ 13 (14 s), mit dem Schwert nach ≈ 25 (23 s). `Fighter` prüft Tempo (nächster Schlag erst nach Schlag, Erholung und
+  neuem Ausholen) und Ausdauer, auf dem Server und im Client ohne Server gleich.
+- Erste Fassung: Ein Stich war kaum 3 m/s schnell und fast wirkungslos, und von oben traf zuerst ein
+  Arm. Jetzt zählt beim Stich der Körper mit (Ausfallschritt, Masse), und von oben geht die Bahn
+  auf die Körpermitte.
+- Server: eine Puppe gut 4 m vor dem Spawn (`training_dummies`), Protokoll 5 mit `Attack`, `Struck`,
+  `Dummies`. Godot: `TerraforgeCombat` (Waffendaten, Lage der Waffe, Meshes aus Quadern),
+  `fighter.gd` (Kampfmodus), `dummies.gd` (Puppe kippt nach Treffern, Schaden als Zahl).
+  `TERRAFORGE_FIGHT` stellt für Schnappschüsse vor die Puppe.
+- Review-Funde behoben: Nach einem Wechsel auf eine leichtere Waffe lehnte der Server den nächsten
+  Schlag als „zu früh“ ab (er rechnete mit der Ausholzeit der alten Waffe; abwechselnde Waffen ließen
+  sich auch ausnutzen). Der Server maß die Zeit erst, wenn der Schlag in der Warteschlange der
+  Worker dran war, beim Streamen kam der nächste dann „zu früh“; jetzt rechnet er beim Empfang.
+  Nach dem Schlag sprang die Klinge zur Ausgangslage statt aus der Endlage zurück. Mit 48 festen
+  Prüfschritten konnte der Speer durch einen Arm schlüpfen. Liegt die Klinge schon beim Ausholen am
+  Ziel, zählt der Kontakt nicht (vorher „Treffer“ mit Schaden nahe 0). Im Kampfmodus schlug ein Klick
+  ins offene Inventar. Der Godot-Test schlägt jetzt mit Axt, wechselt aufs Schwert und sticht.
+- Offen: Gelände hält die Klinge nicht auf; ob wirklich ausgeholt wurde, prüft der Server erst ab
+  dem zweiten Schlag; die Augenposition meldet der Client (#25); Blocken hat ohne Gegner keine
+  Wirkung (#63).
+

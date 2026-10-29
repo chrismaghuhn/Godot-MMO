@@ -6,11 +6,13 @@
 //! - `inventory`:  Inventar des Spielers, Ausbeute und Verbrauch (#18)
 //! - `fell`:       Bäume fällen (#18)
 //! - `save`:       Spielstand schreiben und laden (#19)
+//! - `combat`:     Trainingspuppen, Schläge und Treffer (#62)
 //! - `workers`:    Threads, die die Chunks berechnen
 //!
 //! Vorerst ein lokaler Prozess für den Singleplayer (Godot startet ihn, D-021). Server-autoritative
 //! Bewegung, mehrere Spieler und Interest Management kommen mit Phase 6 (#25, #26).
 
+mod combat;
 mod connection;
 mod edit;
 mod fell;

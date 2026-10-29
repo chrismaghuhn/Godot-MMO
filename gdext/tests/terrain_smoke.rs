@@ -147,3 +147,16 @@ fn tests_do_not_touch_the_game_save() {
     drop(project);
     assert!(!user.exists());
 }
+
+/// Kampf (#62): drei Schläge im Takt des Clients treffen die Puppe, mit und ohne Server.
+#[test]
+fn swings_hit_the_training_dummy_in_godot() {
+    let server = common::server_binary();
+    for mode in [server.display().to_string(), "off".to_string()] {
+        let project = common::TestProject::new();
+        let stdout = common::run_script(&project, "res://tests/combat_smoke.gd", std::slice::from_ref(&mode), &[]);
+        let line = stdout.lines().find(|l| l.starts_with("TERRAFORGE_COMBAT ")).unwrap_or_else(|| panic!("keine Ergebniszeile: {stdout}"));
+        eprintln!("{line}");
+        assert!(line.contains("hits=3"), "{line}");
+    }
+}

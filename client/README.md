@@ -73,6 +73,10 @@ vom Server. Start am selben Spawnpunkt wie im Viewer.
   Ziel im echten Untergrund, prüft Werkzeug, Tempo (höchstens alle 0,1 s) und ob man sich selbst
   einbaut, und schickt die geänderten Chunks. Ohne Server gräbt der Client in der öffentlichen
   Oberfläche. Das Ergebnis (Ausbeute je Material) steht im Overlay.
+- **Kampf** (#62, D-023): R zieht die Waffe bzw. steckt sie weg; dann ist die Maus gefangen. Linke
+  Taste halten und die Maus bewegen wählt die Richtung (hoch: von oben, zur Seite: von dieser Seite,
+  runter: Stich), loslassen schlägt; rechte Taste blockt, C wechselt zwischen Schwert, Axt und Speer.
+  Eine Trainingspuppe steht gut 4 m vor dem Spawn; Treffer, Zone und Schaden stehen unten links.
 - **Inventar und Fällen** (#18): Die Ausbeute kommt ins Inventar (geführt vom Server), mit Werten
   je Stapel (Härte, Dichte, Zähigkeit, Wärmeleitfähigkeit, bei Erzen Reinheit und Spurenelemente).
   I öffnet die Liste, 1-9 oder Mausrad wählen den Platz, aus dem B baut. X fällt den anvisierten
@@ -100,7 +104,8 @@ Meshes, Entfernen beim Weiterfliegen, Höhlen vom Server), [`tests/player_smoke.
 (Laufen und Springen) und [`tests/dig_smoke.gd`](tests/dig_smoke.gd) (Graben und Bauen mit und ohne
 Server, neuer Stand auch in der Kollision, Inventar), [`tests/fell_smoke.gd`](tests/fell_smoke.gd)
 (Bäume fällen), [`tests/trunk_smoke.gd`](tests/trunk_smoke.gd) (Stämme halten auf, gefällte nicht) und
-[`tests/persist_smoke.gd`](tests/persist_smoke.gd) (Spielstand über einen Neustart). Jedes
+[`tests/persist_smoke.gd`](tests/persist_smoke.gd) (Spielstand über einen Neustart) und
+[`tests/combat_smoke.gd`](tests/combat_smoke.gd) (Schläge treffen die Puppe). Jedes
 Testprojekt hat einen eigenen `user://`-Ordner, der Spielstand des echten Spiels bleibt unberührt. Der Test baut sich dafür ein temporäres Projekt, das genau die gerade
 gebaute Bibliothek lädt; die des Editors bleibt unberührt. Ohne Godot (`GODOT` oder `godot` im
 `PATH`) schlägt er fehl. Außerdem prüft `gdext/tests/lockfiles.rs`, dass `gdext/Cargo.lock` für

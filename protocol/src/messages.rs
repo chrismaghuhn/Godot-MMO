@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::chunk::Run;
 
 /// Version des Protokolls; Client und Server müssen gleich sein.
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 
 /// Welche Daten der Client für einen Chunk braucht (wie `UndergroundSource`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +38,9 @@ pub enum ClientMessage {
     Chunk { request: u64, position: [i32; 3], kind: ChunkKind },
     /// Graben oder Bauen in Blickrichtung (`direction` muss nicht normiert sein).
     Edit { request: u64, eye: [f32; 3], direction: [f32; 3], action: EditAction },
+    /// Ein Schlag wird losgelassen (#62): Blick, Waffe (`combat::WEAPONS`), Richtung
+    /// (`combat::Direction::ALL`). Den Schlag samt Treffer rechnet der Server.
+    Attack { request: u64, eye: [f32; 3], yaw: f32, pitch: f32, weapon: u8, direction: u8 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +66,31 @@ pub enum ServerMessage {
     FelledTrees { trees: Vec<(i32, i32, u16)> },
     /// Chunks mit Spieler-Änderungen (nach dem Laden eines Spielstands oder Neuverbinden).
     TouchedChunks { chunks: Vec<[i32; 3]> },
+    /// Trainingspuppen (#62): Fußpunkt und Blickrichtung, Nummer = Index.
+    Dummies { dummies: Vec<([f32; 3], f32)> },
+    Struck { request: u64, outcome: AttackOutcome },
+}
+
+/// Ergebnis von `Attack`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum AttackOutcome {
+    /// Nicht geschlagen (zu früh, zu erschöpft, ungültig).
+    Refused { reason: String },
+    /// Geschlagen: Ausdauer danach und der Treffer, falls einer.
+    Swung { stamina: f32, hit: Option<HitInfo> },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HitInfo {
+    pub dummy: u32,
+    /// `combat::Zone::ALL`.
+    pub zone: u8,
+    /// Fortschritt des Schlags beim Kontakt (0..1), Geschwindigkeit (m/s), Impuls.
+    pub at: f32,
+    pub speed: f32,
+    pub impulse: f32,
+    /// Schnitt, Stich, Wucht.
+    pub damage: [f32; 3],
 }
 
 /// Ein Inventarplatz, wie der Client ihn anzeigt.

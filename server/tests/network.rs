@@ -156,6 +156,8 @@ fn requests_outside_the_world_do_not_break_the_server() {
     assert!(matches!(felled, Some(ServerMessage::FelledTrees { .. })), "{felled:?}");
     let touched: Option<ServerMessage> = read_message(&mut stream).unwrap();
     assert!(matches!(touched, Some(ServerMessage::TouchedChunks { .. })), "{touched:?}");
+    let dummies: Option<ServerMessage> = read_message(&mut stream).unwrap();
+    assert!(matches!(dummies, Some(ServerMessage::Dummies { .. })), "{dummies:?}");
     let far = [[i32::MAX, 0, 0], [0, i32::MIN, 0], [100_000_000, -2, 0], [0, 0, i32::MIN]];
     for (request, position) in far.iter().enumerate() {
         write_message(&mut stream, &ClientMessage::Chunk { request: request as u64, position: *position, kind: ChunkKind::Full }).unwrap();

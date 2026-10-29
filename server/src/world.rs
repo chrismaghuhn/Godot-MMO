@@ -75,6 +75,8 @@ pub struct ServerWorld {
     /// Seit dem letzten Speichern geändert; nur eine Speicherung zugleich (`save.rs`).
     pub(crate) unsaved: AtomicBool,
     pub(crate) save_lock: Mutex<()>,
+    /// Puppen und Kampfzustand des Spielers (`combat.rs`, #62).
+    pub(crate) combat: Mutex<crate::combat::Combat>,
 }
 
 impl ServerWorld {
@@ -82,7 +84,8 @@ impl ServerWorld {
         let world = WorldGen::new(seed);
         let underground = Underground::new(secret, &world.cfg);
         let clearing = (find_spawn(&world).xz(), SPAWN_CLEARING);
-        Self { world, underground, columns: Cache::new(COLUMN_CACHE), chunks: Cache::new(CHUNK_CACHE), edits: RwLock::default(), edit_lock: Mutex::default(), holdings: Mutex::default(), clearing, unsaved: AtomicBool::new(false), save_lock: Mutex::default() }
+        let combat = Mutex::new(crate::combat::Combat::new(&world));
+        Self { world, underground, columns: Cache::new(COLUMN_CACHE), chunks: Cache::new(CHUNK_CACHE), edits: RwLock::default(), edit_lock: Mutex::default(), holdings: Mutex::default(), clearing, unsaved: AtomicBool::new(false), save_lock: Mutex::default(), combat }
     }
 
     pub fn seed(&self) -> u32 {

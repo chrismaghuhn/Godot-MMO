@@ -32,6 +32,8 @@ var tool := TerraforgeTerrain.tool_count() - 1
 var slot := 0
 ## Inventar offen: Klicks graben dann nicht.
 var ui_open := false
+## Kampfmodus (`fighter.gd`): Maus gefangen, Maustasten schlagen und blocken statt zu graben.
+var combat := false
 ## Ergebnis der letzten Grab- oder Bau-Aktion (für das Overlay).
 var edit_message := ""
 
@@ -66,12 +68,12 @@ func set_flying(enabled: bool) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and not combat:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if event.pressed else Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= event.relative.x * MOUSE_SENSITIVITY
 		pitch = clampf(pitch - event.relative.y * MOUSE_SENSITIVITY, -1.5, 1.5)
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and not ui_open:
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and not ui_open and not combat:
 		dig()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:

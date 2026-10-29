@@ -26,7 +26,7 @@ use terraforge_core::volume::{ColumnData, DensityChunk};
 
 use crate::framing::{read_message, write_message};
 use crate::chunk::apply;
-use crate::messages::{ChunkKind, ChunkReply, ClientMessage, EditAction, EditOutcome, ServerMessage, StackInfo, VERSION};
+use crate::messages::{AttackOutcome, ChunkKind, ChunkReply, ClientMessage, EditAction, EditOutcome, ServerMessage, StackInfo, VERSION};
 
 /// So lange wartet ein Worker höchstens auf einen Chunk.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -36,6 +36,8 @@ type Edited = Arc<Mutex<Vec<(u64, EditOutcome)>>>;
 type Inventory = Arc<Mutex<Option<Vec<StackInfo>>>>;
 type Felled = Arc<Mutex<Vec<(i32, i32, u16)>>>;
 type Touched = Arc<Mutex<Vec<[i32; 3]>>>;
+type Struck = Arc<Mutex<Vec<(u64, AttackOutcome)>>>;
+type Dummies = Arc<Mutex<Option<Vec<([f32; 3], f32)>>>>;
 
 pub struct NetworkSource {
     lowest_cave_chunk: i32,
@@ -45,6 +47,8 @@ pub struct NetworkSource {
     inventory: Inventory,
     felled: Felled,
     touched: Touched,
+    struck: Struck,
+    dummies: Dummies,
     next_request: AtomicU64,
     failed: Arc<AtomicBool>,
     reader: Option<JoinHandle<()>>,
@@ -72,11 +76,14 @@ impl NetworkSource {
         let inventory: Inventory = Arc::default();
         let felled: Felled = Arc::default();
         let touched: Touched = Arc::default();
+        let struck: Struck = Arc::default();
+        let dummies: Dummies = Arc::default();
         let failed = Arc::new(AtomicBool::new(false));
         let mut reader_stream = stream.try_clone()?;
         let reader = {
             let (pending, edited, inventory, failed) = (Arc::clone(&pending), Arc::clone(&edited), Arc::clone(&inventory), Arc::clone(&failed));
             let (felled, touched) = (Arc::clone(&felled), Arc::clone(&touched));
+            let (struck, dummies) = (Arc::clone(&struck), Arc::clone(&dummies));
             std::thread::Builder::new().name("terraforge-net".into()).spawn(move || {
                 loop {
                     match read_message::<ServerMessage>(&mut reader_stream) {
@@ -97,6 +104,12 @@ impl NetworkSource {
                         Ok(Some(ServerMessage::TouchedChunks { chunks })) => {
                             touched.lock().unwrap_or_else(PoisonError::into_inner).extend(chunks);
                         }
+                        Ok(Some(ServerMessage::Struck { request, outcome })) => {
+                            struck.lock().unwrap_or_else(PoisonError::into_inner).push((request, outcome));
+                        }
+                        Ok(Some(ServerMessage::Dummies { dummies: list })) => {
+                            *dummies.lock().unwrap_or_else(PoisonError::into_inner) = Some(list);
+                        }
                         Ok(Some(other)) => eprintln!("terraforge: unerwartete Nachricht vom Server: {other:?}"),
                         Ok(None) | Err(_) => break,
                     }
@@ -107,7 +120,7 @@ impl NetworkSource {
                 pending.lock().unwrap_or_else(PoisonError::into_inner).clear();
             })?
         };
-        Ok(Self { lowest_cave_chunk, writer: Mutex::new(stream), pending, edited, inventory, felled, touched, next_request: AtomicU64::new(0), failed, reader: Some(reader) })
+        Ok(Self { lowest_cave_chunk, writer: Mutex::new(stream), pending, edited, inventory, felled, touched, struck, dummies, next_request: AtomicU64::new(0), failed, reader: Some(reader) })
     }
 
     /// Ob die Verbindung ausgefallen ist (ab dann nur noch öffentliche Oberfläche).
@@ -145,6 +158,31 @@ impl NetworkSource {
     /// Gefällte Bäume, die der Server seit dem letzten Aufruf gemeldet hat (nach der Anmeldung).
     pub fn take_felled(&self) -> Vec<(i32, i32, u16)> {
         std::mem::take(&mut *self.felled.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// Schickt einen Schlag (#62); die Antwort kommt über `take_struck` mit derselben Nummer.
+    pub fn send_attack(&self, eye: [f32; 3], yaw: f32, pitch: f32, weapon: u8, direction: u8) -> Option<u64> {
+        if self.failed() {
+            return None;
+        }
+        let request = self.next_request.fetch_add(1, Ordering::Relaxed);
+        let message = ClientMessage::Attack { request, eye, yaw, pitch, weapon, direction };
+        match write_message(&mut *self.writer.lock().unwrap_or_else(PoisonError::into_inner), &message) {
+            Ok(()) => Some(request),
+            Err(_) => {
+                self.failed.store(true, Ordering::Release);
+                None
+            }
+        }
+    }
+
+    pub fn take_struck(&self) -> Vec<(u64, AttackOutcome)> {
+        std::mem::take(&mut *self.struck.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// Die Trainingspuppen, sobald der Server sie gemeldet hat (einmal nach der Anmeldung).
+    pub fn take_dummies(&self) -> Option<Vec<([f32; 3], f32)>> {
+        self.dummies.lock().unwrap_or_else(PoisonError::into_inner).take()
     }
 
     /// Veränderte Chunks, die der Server seit dem letzten Aufruf gemeldet hat (nach der Anmeldung).

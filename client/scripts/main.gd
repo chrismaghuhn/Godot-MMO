@@ -6,7 +6,9 @@
 # TERRAFORGE_BENCH_OUT, TERRAFORGE_SHOT_AFTER (Frames, Standard 240), TERRAFORGE_PITCH/
 # TERRAFORGE_YAW (Grad), TERRAFORGE_CAM_Y (fliegend so viel höher starten), TERRAFORGE_FLY (fliegend
 # starten; Autopilot fliegt immer), TERRAFORGE_SERVER (auto, off oder
-# host:port; Standard auto, siehe TerraforgeTerrain). Anders als im Viewer: TERRAFORGE_SEED
+# host:port; Standard auto, siehe TerraforgeTerrain), TERRAFORGE_FIGHT (Kampf-Schnappschuss: vor die
+# Puppe stellen, Waffe ziehen und in Richtung 0-3 ausholen, ohne loszulassen; mit
+# TERRAFORGE_WEAPON 0-2 und TERRAFORGE_FIGHT_S, Lage im Schlag 0-1, negativ beim Ausholen). Anders als im Viewer: TERRAFORGE_SEED
 # (im Viewer das erste Argument) und TERRAFORGE_SHOT ist der Pfad der PNG-Datei (im Viewer ein
 # Schalter für shots/auto.png).
 extends Node3D
@@ -74,6 +76,17 @@ func _ready() -> void:
 	overlay.world = world
 	overlay.player = player
 	add_child(overlay)
+	var dummies := preload("res://scripts/dummies.gd").new()
+	dummies.terrain = terrain
+	add_child(dummies)
+	var fighter := preload("res://scripts/fighter.gd").new()
+	fighter.name = "Fighter"
+	fighter.terrain = terrain
+	fighter.player = player
+	fighter.dummies = dummies
+	add_child(fighter)
+	if OS.has_environment("TERRAFORGE_FIGHT"):
+		_fight_pose.call_deferred(fighter, dummies)
 	var inventory := preload("res://scripts/inventory.gd").new()
 	inventory.terrain = terrain
 	inventory.player = player
@@ -85,6 +98,29 @@ func _ready() -> void:
 		add_child(bench)
 	if OS.has_environment("TERRAFORGE_SHOT"):
 		_take_screenshot_later(OS.get_environment("TERRAFORGE_SHOT"), int(env_float("TERRAFORGE_SHOT_AFTER", 240)))
+
+
+## Für Schnappschüsse: vor die Puppe stellen und mit gezogener Waffe ausholen (nicht loslassen).
+func _fight_pose(fighter: Node, dummies: Node3D) -> void:
+	var list: Array = terrain.get_dummies()
+	if list.is_empty():
+		_fight_pose.call_deferred(fighter, dummies)
+		return
+	var dummy: Dictionary = list[0]
+	var feet: Vector3 = dummy.feet
+	var stand: Vector3 = feet + Vector3(-sin(dummy.yaw), 0, -cos(dummy.yaw)) * 1.4
+	stand.y = world.height_at(stand.x, stand.z)
+	player.body.set_position(stand)
+	player.position = stand
+	player.reset_physics_interpolation()
+	var to := feet + Vector3(0, 1.3, 0) - (stand + Vector3(0, 1.65, 0))
+	player.look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
+	fighter._set_weapon(int(env_float("TERRAFORGE_WEAPON", 0)))
+	fighter.set_active(true)
+	fighter.start_windup()
+	fighter.direction = int(env_float("TERRAFORGE_FIGHT", 0))
+	fighter.chosen = true
+	fighter.hold = env_float("TERRAFORGE_FIGHT_S", -1.0)
 
 
 func _add_environment() -> void:

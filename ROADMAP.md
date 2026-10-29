@@ -81,7 +81,7 @@ Ab hier ist der Bevy-Viewer nur noch Debug-Tool.
 - [ ] Oberflächen-Hinweise auf Erze (vom Server gesteuert): #48
 - [x] Große Regionen (4-8 km) für ein BOTW-Gefühl (D-014): #50
 - [x] Speichern von Weltänderungen (Delta auf den Seed): #19
-- [ ] Kampf-Prototyp vorgezogen (D-023): Trainingspuppe mit Waffen und Schlägen mit Richtung #62, erster Gegner mit KI #63
+- [ ] Kampf-Prototyp vorgezogen (D-023): Trainingspuppe mit Waffen und Schlägen mit Richtung #62 ✓, erster Gegner mit KI #63
 
 ## Phase 4: Crafting
 

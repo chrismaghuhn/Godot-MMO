@@ -34,6 +34,7 @@ use terraforge_core::streaming::{Config, Event, FarKey, JobKind, PublicSurface, 
 use terraforge_protocol::NetworkSource;
 use terraforge_core::volume::CHUNK_SIZE;
 
+use crate::combat::CombatState;
 use crate::dig::Edits;
 use crate::mesh::MeshData;
 use crate::server::ServerProcess;
@@ -81,6 +82,7 @@ pub(crate) struct TerraforgeTerrain {
     /// Verbindung zum Server, falls es eine gibt.
     pub(crate) network: Option<Arc<NetworkSource>>,
     pub(crate) edits: Edits,
+    pub(crate) combat: CombatState,
     /// Der selbst gestartete Server; endet mit dem Terrain.
     pub(crate) server_process: Option<ServerProcess>,
     /// Zustand für Overlay und Tests: "aus", "verbunden", "nicht erreichbar", "ausgefallen".
@@ -152,6 +154,8 @@ impl INode3D for TerraforgeTerrain {
     }
 
     fn process(&mut self, _delta: f64) {
+        // Auch ohne Kamera (z. B. bevor der Spieler steht): Puppen und Schläge vom Server.
+        self.combat.poll(self.network.as_deref());
         let Some(camera) = self.base().get_viewport().and_then(|viewport| viewport.get_camera_3d()) else {
             return;
         };

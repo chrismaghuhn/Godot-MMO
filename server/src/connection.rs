@@ -4,10 +4,11 @@
 use std::net::TcpStream;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Instant;
 
 use glam::IVec3;
 use terraforge_protocol::framing::{read_message, write_message};
-use terraforge_protocol::{ChunkReply, ClientMessage, EditOutcome, ServerMessage, VERSION};
+use terraforge_protocol::{AttackOutcome, ChunkReply, ClientMessage, EditOutcome, ServerMessage, VERSION};
 
 use crate::ServerWorld;
 use crate::world::in_world;
@@ -29,6 +30,7 @@ fn serve_client(mut stream: TcpStream, world: &Arc<ServerWorld>, workers: &Worke
             write_message(&mut stream, &ServerMessage::Inventory { stacks: world.inventory_view() })?;
             write_message(&mut stream, &ServerMessage::FelledTrees { trees: world.felled_trees() })?;
             write_message(&mut stream, &ServerMessage::TouchedChunks { chunks: world.touched_chunks() })?;
+            write_message(&mut stream, &ServerMessage::Dummies { dummies: world.dummies() })?;
         }
         Some(ClientMessage::Hello { version, seed }) => {
             let reason = format!("Client: Protokoll {version}, Seed {seed}; Server: Protokoll {VERSION}, Seed {}", world.seed());
@@ -79,6 +81,14 @@ fn serve_client(mut stream: TcpStream, world: &Arc<ServerWorld>, workers: &Worke
                         write_message(&mut *writer, &inventory).ok();
                     }
                 });
+            }
+            ClientMessage::Attack { request, eye, yaw, pitch, weapon, direction } => {
+                // Gleich hier statt in der Warteschlange der Worker: Das Tempo zählt ab dem Empfang
+                // (Review-Fund: beim Streamen kam ein Schlag sonst verspätet dran und der nächste
+                // „zu früh“), und der Schlag ist billig (einige hundert Abstandstests).
+                let outcome = catch_unwind(AssertUnwindSafe(|| world.attack(Instant::now(), eye, yaw, pitch, weapon, direction)))
+                    .unwrap_or_else(|_| AttackOutcome::Refused { reason: "Fehler auf dem Server".into() });
+                write_message(&mut *writer.lock().unwrap_or_else(PoisonError::into_inner), &ServerMessage::Struck { request, outcome }).ok();
             }
             ClientMessage::Hello { .. } => {}
         }

@@ -65,6 +65,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			player.ui_open = panel.visible
 			if panel.visible:
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			elif player.combat:
+				# Im Kampfmodus ist die Maus wieder gefangen (sonst drehte die Kamera nicht mehr).
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_9:
 			player.slot = event.physical_keycode - KEY_1
 	elif event is InputEventMouseButton and event.pressed and not stacks.is_empty():
