@@ -125,6 +125,7 @@ Wenn nicht: hier nachbessern, bevor Netzwerk dazukommt.
 - Besondere Welt-Features: schwebende Inseln, Wasserfälle, Ruinen, Geysire, Treibsand: #30
 - Seen als eigene Gewässer: #31
 - Höhlen-Biome auf echte Höhlen abbilden: #32
+- Achtarm-Boss im Takt, gesteuert von einem neuronalen Netz, Design in [docs/design/boss-achtarm.md](docs/design/boss-achtarm.md): #61
 - [x] LOD für weite Sichtweite (D-015): #33
 
 ## Bekannte Bugs und Aufräumarbeiten
